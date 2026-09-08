@@ -17,8 +17,10 @@ site goes down.
 ## Build and dependencies
 
 No build step, no bundler, no package manager, no test runner. The game is one HTML file
-containing its own CSS and JS. The only external dependency is Google Fonts (Bungee for
-display type, Nunito for body); everything else — including the mascot image — is inline.
+containing its own CSS and JS. External dependencies are Google Fonts (Bungee for display
+type, Nunito for body) and the Firebase compat SDK (loaded from `gstatic.com` via two
+`<script>` tags, for the shared leaderboard — see Browser storage below); everything
+else — including the mascot image — is inline.
 
 To work on it, open `bucketsquad/index.html` in a browser and reload. That's the whole
 loop. Do not introduce a toolchain, a framework, or an npm dependency without asking.
@@ -52,6 +54,12 @@ Everything lives in one file: inline `<style>`, DOM for the HUD/joystick/overlay
   offensive players), `handler` (index of whoever has the ball, derives `me()`/`mate()`),
   `D` (the defender), `ball` (`null` when held, otherwise an object with `mode` of
   `"shot"`, `"pass"`, or `"steal"`), plus `score`, `run`, `timeLeft`, `playing`, etc.
+- **Modes.** `mode` is `"game"` (Two on One) or `"three"` (3-Point Contest), driven by
+  `MODES`. Three-mode reuses the same sim/render loop but branches early in `step()`/`draw()`
+  instead of forking into a second game — `racks`/`RACK_SPOTS` place five ball racks on the
+  floor (`buildRacks()`), the top-of-the-key rack is all money balls, the other four end in
+  one; `holding`/`moneyHeld` track what's in hand. `target()` still always returns the top
+  hoop, so shots must clear `isThree()` in three-mode (no close-range attempts).
 - **Audio.** A small synth built directly on Web Audio, no audio files — `tone()` and
   `noise()` are the primitives, `sfx` is the sound bank. `Q` and `gain` are AudioParams,
   so they're set with `.value`/`setValueAtTime`, not by assignment. Audio can only start
@@ -72,9 +80,19 @@ from how close the released power is to the ideal for the distance, adjusted for
 defender proximity and whether the shooter is moving. Passing to an open teammate is
 meant to be rewarded; a lazy pass through the defender can be picked off.
 
-**Browser storage:** the high score persists via `window.storage.get/set` (not a
-standard browser API — provided by the hosting environment), wrapped in try/catch. Do
-not replace it with `localStorage`/`sessionStorage`.
+**Leaderboard storage:** the top-10-per-mode leaderboard lives in Cloud Firestore (project
+`bucketsquadgame`), not in browser storage — `rmvbasketball.com` is plain static GitHub
+Pages with no backend of its own, so anything meant to be shared across visitors has to
+live somewhere off-site. `loadBoards()`/`saveScore()` read/write two flat collections,
+`scores_game` and `scores_three` (one doc per submitted score: `name`, `score`, `ts`),
+each queried with a single `orderBy("score","desc").limit(10)` — deliberately two
+collections instead of one with a `mode` field, so no composite index is needed. The
+`firebaseConfig` object embedded in the script is meant to be public; Firestore access is
+controlled by the security rules on the project console, not by hiding the config. Every
+Firestore call is wrapped in try/catch and degrades to an empty/unsaved leaderboard on
+failure (offline, rules misconfigured, etc.) rather than breaking the game. The player's
+own name is the one piece of state that's still local-only, via `localStorage`
+(`bucketsquad:name`) — it doesn't need to be shared, so it never touches Firestore.
 
 ## Workflow
 
