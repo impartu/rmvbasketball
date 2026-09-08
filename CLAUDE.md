@@ -54,12 +54,22 @@ Everything lives in one file: inline `<style>`, DOM for the HUD/joystick/overlay
   offensive players), `handler` (index of whoever has the ball, derives `me()`/`mate()`),
   `D` (the defender), `ball` (`null` when held, otherwise an object with `mode` of
   `"shot"`, `"pass"`, or `"steal"`), plus `score`, `run`, `timeLeft`, `playing`, etc.
-- **Modes.** `mode` is `"game"` (Two on One) or `"three"` (3-Point Contest), driven by
-  `MODES`. Three-mode reuses the same sim/render loop but branches early in `step()`/`draw()`
-  instead of forking into a second game — `racks`/`RACK_SPOTS` place five ball racks on the
-  floor (`buildRacks()`), the top-of-the-key rack is all money balls, the other four end in
-  one; `holding`/`moneyHeld` track what's in hand. `target()` still always returns the top
-  hoop, so shots must clear `isThree()` in three-mode (no close-range attempts).
+- **Modes.** `mode` is `"game"` (Two on One), `"three"` (3-Point Contest), or `"arizona"`
+  (Arizona Drill), driven by `MODES`. Each mode reuses the same sim/render loop but
+  branches early in `step()`/`draw()` instead of forking into a separate game.
+  - Three-mode: `racks`/`RACK_SPOTS` place five ball racks on the floor (`buildRacks()`),
+    the top-of-the-key rack is all money balls, the other four end in one;
+    `holding`/`moneyHeld` track what's in hand.
+  - Arizona-mode: a scripted full-court relay, not a second opponent-driven game. The
+    player (`team[0]`) always carries the ball; `AZ_LEGS` holds two legs (one per basket)
+    each with a `start` and two fixed relay spots — `azStep` (0-6, commented above its
+    declaration) walks the ball out to relay A, back, out to relay B, then B leads a pass
+    the rest of the way to the rim, where a normal charge/release shot fires. Either way,
+    `resolveShot()` calls `azAdvanceLeg()`, which flips `azLeg` and teleports the runner to
+    the other leg's start — the loop never pauses to wait for a rebound.
+  - `target()` is mode-aware (`hoops[0]` for game/three, whichever basket the current
+    Arizona leg is running at); shots in three-mode must additionally clear `isThree()`
+    (no close-range attempts).
 - **Audio.** A small synth built directly on Web Audio, no audio files — `tone()` and
   `noise()` are the primitives, `sfx` is the sound bank. `Q` and `gain` are AudioParams,
   so they're set with `.value`/`setValueAtTime`, not by assignment. Audio can only start

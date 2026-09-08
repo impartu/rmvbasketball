@@ -55,6 +55,8 @@
   #nm:focus{outline:none;border-color:var(--sky-deep)}
   .play.alt{background:var(--sky-deep);box-shadow:0 5px 0 #1B5379}
   .play.alt:active{box-shadow:0 2px 0 #1B5379}
+  .play.az{background:#3E8C56;box-shadow:0 5px 0 #235A34}
+  .play.az:active{box-shadow:0 2px 0 #235A34}
   .play+.hint{font-size:11px;color:#8A7361;margin:6px 0 14px}
   .row{display:flex;gap:10px;margin-top:12px}
   .link{flex:1;border:0;background:#F0E4D6;color:#5A4636;border-radius:12px;padding:10px;
@@ -298,7 +300,7 @@ function buildFloor(){
 
 /* ---------------- modes, storage, leaderboard ---------------- */
 const el=id=>document.getElementById(id);
-const MODES={game:{label:"Two on One",secs:60},three:{label:"3-Point Contest",secs:60}};
+const MODES={game:{label:"Two on One",secs:60},three:{label:"3-Point Contest",secs:60},arizona:{label:"Arizona Drill",secs:120}};
 let mode="game", playerName="";
 
 /* Shared leaderboard lives in Firebase (Cloud Firestore) so every visitor sees the
@@ -314,13 +316,14 @@ const firebaseConfig={
 firebase.initializeApp(firebaseConfig);
 const db=firebase.firestore();
 
-let boards={game:[],three:[]};
+let boards={game:[],three:[],arizona:[]};
 async function loadBoards(){
   try{
-    const [g,t]=await Promise.all(["game","three"].map(m=>
+    const [g,t,a]=await Promise.all(["game","three","arizona"].map(m=>
       db.collection("scores_"+m).orderBy("score","desc").limit(10).get()));
     boards={game:g.docs.map(d=>({n:d.data().name,s:d.data().score})),
-            three:t.docs.map(d=>({n:d.data().name,s:d.data().score}))};
+            three:t.docs.map(d=>({n:d.data().name,s:d.data().score})),
+            arizona:a.docs.map(d=>({n:d.data().name,s:d.data().score}))};
   }catch(e){}
   try{ playerName=window.localStorage.getItem("bucketsquad:name")||""; }catch(e){}
 }
@@ -358,10 +361,27 @@ function nearestRack(){
   return best;
 }
 
+/* Arizona Drill: the runner (team[0]) always carries the ball; two fixed relay
+   spots per leg bounce it along automatically, the second one leads the pass
+   all the way to the rim. azStep: 0 running to relay A, 1 ball out to A,
+   2 ball back from A, 3 running to relay B, 4 ball out to B, 5 ball ahead
+   from B to the rim, 6 at the rim, ready to shoot. */
+const AZ_CHECK_R=3.2;
+const AZ_LEGS=[
+  {hoop:0, start:{x:10,y:CL-6}, relays:[{x:10,y:CL*0.62},{x:CW-10,y:CL*0.36}]},
+  {hoop:1, start:{x:CW-10,y:6}, relays:[{x:CW-10,y:CL*0.38},{x:10,y:CL*0.64}]}
+];
+let azLeg=0, azStep=0, azAttempts=0;
+function azAdvanceLeg(){
+  azLeg=1-azLeg; azStep=0;
+  const s=AZ_LEGS[azLeg].start;
+  team[0].x=s.x; team[0].y=s.y; team[0].vx=team[0].vy=0;
+}
+
 const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
 const mate=()=>team[1-handler];
 const me=()=>team[handler];
-function target(){ return hoops[0]; }   // one live basket, the top one
+function target(){ return mode==="arizona"?hoops[AZ_LEGS[azLeg].hoop]:hoops[0]; }
 function isThree(p,h){
   if(Math.abs(p.y-h.y)<=ARC_DY) return p.x<CORNER_X||p.x>CW-CORNER_X;
   return dist(p,h)>ARC_R;
@@ -432,7 +452,7 @@ stick.addEventListener("pointermove",e=>{if(e.pointerId===stickId)stickAt(e);});
 }));
 
 const fill=el("fill"), band=el("band");
-const canShoot=()=>playing&&!ball&&(mode==="game"||holding);
+const canShoot=()=>playing&&!ball&&(mode==="game"||holding||(mode==="arizona"&&azStep===6));
 function beginShot(){ audio(); if(!canShoot()) return; charging=true; power=0; dirCharge=1; }
 function endShot(){ if(!charging) return; charging=false; release(); }
 el("shoot").addEventListener("pointerdown",e=>{e.preventDefault();beginShot();});
@@ -483,20 +503,26 @@ function say(t,c){
 }
 function hud(){
   el("score").textContent=score;
-  el("run").textContent=(mode==="three")?ballsLeft()+(holding?1:0):run;
+  el("run").textContent=(mode==="three")?ballsLeft()+(holding?1:0):(mode==="arizona"?azAttempts:run);
 }
 function resolveShot(){
   if(ball.made){
     let pts;
     if(mode==="three"){ pts=ball.money?2:1; if(ball.money) sfx.money(); else sfx.swish(); }
+    else if(mode==="arizona"){ pts=1; sfx.swish(); }
     else { pts=ball.three?3:2; sfx.swish(); }
     score+=pts; run++;
     ripples.push({x:ball.h.x,y:ball.h.y,t:0});
     if(mode==="three") say(ball.money?"MONEY! +2":"+1",ball.money?"#FFC93F":"#fff");
+    else if(mode==="arizona") say("LAYUP!");
     else say(run>=3?`${pts} PTS · HEATING UP`:(ball.three?"THREE!":"BUCKET!"));
-    if(run>=3&&!(mode==="three"&&ball.money)) sfx.streak();
+    if(run>=3&&mode!=="arizona"&&!(mode==="three"&&ball.money)) sfx.streak();
     shake=ball.money?.45:.35;
-  }else{ run=0; sfx.rim(); say(Math.random()<.5?"OFF THE RIM":"NO GOOD"); }
+  }else{
+    run=0; sfx.rim();
+    say(mode==="arizona"?"MISSED":(Math.random()<.5?"OFF THE RIM":"NO GOOD"));
+  }
+  if(mode==="arizona"){ azAttempts++; azAdvanceLeg(); }
   hud(); ball=null;
 }
 
@@ -537,6 +563,46 @@ function step(dt){
     ripples.forEach(r=>r.t+=dt);
     ripples=ripples.filter(r=>r.t<.7);
     if(ball){ ball.t+=dt; if(ball.t>=ball.dur) resolveShot(); }
+    if(shake>0) shake=Math.max(0,shake-dt);
+    return;
+  }
+
+  if(mode==="arizona"){
+    const leg=AZ_LEGS[azLeg], rA=leg.relays[0], rB=leg.relays[1];
+    if(azStep===0&&!ball&&dist(p,rA)<AZ_CHECK_R){
+      const d=dist(p,rA);
+      ball={mode:"pass",sx:p.x,sy:p.y,ex:rA.x,ey:rA.y,t:0,dur:Math.max(.14,d*.02),peak:1.8};
+      azStep=1; sfx.pass();
+    }else if(azStep===3&&!ball&&dist(p,rB)<AZ_CHECK_R){
+      const d=dist(p,rB);
+      ball={mode:"pass",sx:p.x,sy:p.y,ex:rB.x,ey:rB.y,t:0,dur:Math.max(.14,d*.02),peak:1.8};
+      azStep=4; sfx.pass();
+    }
+    if(ball&&ball.mode==="pass"&&(azStep===1||azStep===2||azStep===4||azStep===5)){
+      if(azStep===2||azStep===5){ ball.ex=p.x; ball.ey=p.y; }
+      ball.t+=dt;
+      if(ball.t>=ball.dur){
+        if(azStep===1){
+          const d=dist(rA,p);
+          ball={mode:"pass",sx:rA.x,sy:rA.y,ex:p.x,ey:p.y,t:0,dur:Math.max(.16,d*.021),peak:2.2};
+          azStep=2; sfx.pass();
+        }else if(azStep===2){ ball=null; azStep=3; }
+        else if(azStep===4){
+          const h=target(), d=dist(rB,h);
+          ball={mode:"pass",sx:rB.x,sy:rB.y,ex:p.x,ey:p.y,t:0,dur:Math.max(.5,d*.03),peak:9};
+          azStep=5; sfx.pass();
+        }else if(azStep===5){ ball=null; azStep=6; }
+      }
+    }else if(ball&&ball.mode==="shot"){
+      ball.t+=dt;
+      if(ball.t>=ball.dur) resolveShot();
+    }
+    if(!ball&&(azStep===0||azStep===3)){
+      dribT-=dt;
+      if(dribT<=0){ sfx.dribble(); dribT=.44-Math.min(.16,Math.hypot(p.vx,p.vy)*.014); }
+    }
+    ripples.forEach(r=>r.t+=dt);
+    ripples=ripples.filter(r=>r.t<.7);
     if(shake>0) shake=Math.max(0,shake-dt);
     return;
   }
@@ -653,6 +719,17 @@ function drawRacks(){
     });
   });
 }
+function drawAZRelays(){
+  AZ_LEGS[azLeg].relays.forEach((r,i)=>{
+    const active=i===0?azStep<=2:azStep>=3&&azStep<=5;
+    if(active){
+      const pu=(Date.now()%800)/800;
+      ctx.strokeStyle=`rgba(143,224,138,${.7-pu*.6})`; ctx.lineWidth=S*.4;
+      ctx.beginPath(); ctx.arc(fx(r.x),fy(r.y),S*(2+pu*2.6),0,7); ctx.stroke();
+    }
+    drawKid({x:r.x,y:r.y,bob:0,num:i===0?"A":"B",jersey:i===0?"#7A6A50":"#4B6A50"},false,false);
+  });
+}
 function draw(){
   ctx.save();
   if(shake>0) ctx.translate((Math.random()-.5)*shake*10,(Math.random()-.5)*shake*10);
@@ -680,6 +757,7 @@ function draw(){
   });
 
   if(mode==="three") drawRacks();
+  else if(mode==="arizona") drawAZRelays();
 
   ripples.forEach(r=>{
     ctx.strokeStyle=`rgba(240,87,31,${.8-r.t/.7})`; ctx.lineWidth=S*.5;
@@ -707,7 +785,7 @@ function draw(){
     drawKid(mate(),false,!ball&&openMate);
     drawKid(me(),!ball,false);
   }else{
-    drawKid(team[0],holding&&!ball,false);
+    drawKid(team[0],(mode==="arizona"?true:holding)&&!ball,false);
   }
 
   if(charging&&!ball){
@@ -717,7 +795,7 @@ function draw(){
     ctx.setLineDash([]);
     ctx.fillStyle=(mode==="three"&&moneyHeld)?"#FFC93F":"#fff";
     ctx.font=`${S*1.6}px Bungee, Impact, sans-serif`; ctx.textAlign="center";
-    ctx.fillText(mode==="three"?(moneyHeld?"MONEY":"1PT"):(isThree(p,h)?"3PT":"2PT"),fx(p.x),fy(p.y)-S*2.8);
+    ctx.fillText(mode==="three"?(moneyHeld?"MONEY":"1PT"):mode==="arizona"?"LAYUP":(isThree(p,h)?"3PT":"2PT"),fx(p.x),fy(p.y)-S*2.8);
   }
 
   if(ball&&ball.mode!=="steal"){
@@ -727,7 +805,7 @@ function draw(){
     ctx.fillStyle="rgba(40,26,14,.22)";
     ctx.beginPath(); ctx.ellipse(fx(bx),fy(by),S*.5,S*.28,0,0,7); ctx.fill();
     drawBall(fx(bx),fy(by)-hgt*S*.55,S*(.62+hgt*.02),ball.mode==="shot"&&ball.money);
-  }else if(!ball&&(mode==="game"||holding)){
+  }else if(!ball&&(mode==="game"||holding||mode==="arizona")){
     const p=me(), dr=Math.abs(Math.sin(p.bob*3));
     drawBall(fx(p.x)+S*1.5,fy(p.y)+S*(.6+dr*.5),S*.55,mode==="three"&&moneyHeld);
   }else if(ball&&mode==="game"){
@@ -763,13 +841,15 @@ function nameFromInput(){
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 function homeScreen(){
-  const bestG=boards.game[0], bestT=boards.three[0];
+  const bestG=boards.game[0], bestT=boards.three[0], bestA=boards.arizona[0];
   card(`<h1>BucketSquad<span>Hoops</span></h1>
     <input id="nm" placeholder="Your name" maxlength="12" value="${esc(playerName)}">
     <button class="play" data-m="game">2 on 1 &middot; 60 sec</button>
     <div class="hint">${bestG?`Top: ${esc(bestG.n)} ${bestG.s}`:"Pass, find the open man, score."}</div>
     <button class="play alt" data-m="three">3-Point Contest</button>
     <div class="hint">${bestT?`Top: ${esc(bestT.n)} ${bestT.s}`:"5 racks, money balls worth 2."}</div>
+    <button class="play az" data-m="arizona">Arizona Drill &middot; 2 min</button>
+    <div class="hint">${bestA?`Top: ${esc(bestA.n)} ${bestA.s}`:"Full-court layups, makes and misses."}</div>
     <div class="row">
       <button class="link" id="lbBtn">Leaderboard</button>
       <button class="link" id="defBtn">Defender: ${D.on?"On":"Off"}</button>
@@ -785,6 +865,7 @@ function boardScreen(m){
     <div class="tabs">
       <button class="tab ${m==="game"?"on":""}" data-b="game">2 on 1</button>
       <button class="tab ${m==="three"?"on":""}" data-b="three">3PT</button>
+      <button class="tab ${m==="arizona"?"on":""}" data-b="arizona">Arizona</button>
     </div>
     <ol class="lb">${rows.length?rows.map((r,i)=>
       `<li><span class="pos">${i+1}</span><span class="who">${esc(r.n)}</span><span class="pts">${r.s}</span></li>`).join("")
@@ -804,15 +885,19 @@ function start(m){
   D.x=CW/2; D.y=19; D.slow=0;
   holding=false; moneyHeld=0;
   if(mode==="three"){ buildRacks(); activeRack=0; }
-  el("runLabel").textContent=mode==="three"?"BALLS":"STREAK";
-  el("pass").style.display=mode==="three"?"none":"";
+  if(mode==="arizona"){
+    azLeg=0; azStep=0; azAttempts=0;
+    team[0].x=AZ_LEGS[0].start.x; team[0].y=AZ_LEGS[0].start.y;
+  }
+  el("runLabel").textContent=mode==="three"?"BALLS":mode==="arizona"?"TRIES":"STREAK";
+  el("pass").style.display=mode==="game"?"":"none";
   el("time").textContent=MODES[mode].secs;
   fill.setAttribute("stroke-dashoffset",289);
   if(band) band.setAttribute("stroke-dasharray","0 289");
   hud();
   el("overlay").classList.add("hide");
   playing=true; last=performance.now(); audio(); sfx.tip();
-  say(mode==="three"?"SHOOT!":"GO!");
+  say(mode==="three"?"SHOOT!":mode==="arizona"?"RUN!":"GO!");
 }
 
 async function gameOver(){
