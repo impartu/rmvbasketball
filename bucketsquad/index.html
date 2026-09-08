@@ -371,10 +371,11 @@ function nearestRack(){
    all the way to the rim. azStep: 0 running to relay A, 1 ball out to A,
    2 ball back from A, 3 running to relay B, 4 ball out to B, 5 ball ahead
    from B to the rim, 6 at the rim, ready to shoot. */
-const AZ_CHECK_R=3.2;
+/* Each leg hugs a single sideline the whole way -- no mid-leg crossover -- and
+   leg 1 is leg 0 mirrored 180 degrees, so the two lines never share a lane. */
 const AZ_LEGS=[
-  {hoop:0, start:{x:4,y:CL-8}, relays:[{x:4,y:CL*0.62},{x:CW-4,y:CL*0.34}]},
-  {hoop:1, start:{x:CW-4,y:8}, relays:[{x:CW-4,y:CL*0.38},{x:4,y:CL*0.66}]}
+  {hoop:0, start:{x:CW-4,y:CL-8}, relays:[{x:CW-4,y:CL*0.62},{x:CW-4,y:CL*0.30}]},
+  {hoop:1, start:{x:4,y:8}, relays:[{x:4,y:CL*0.38},{x:4,y:CL*0.70}]}
 ];
 let azLeg=0, azStep=0, azAttempts=0;
 function azAdvanceLeg(){
@@ -485,12 +486,12 @@ function doPass(){
     ball={mode:"pass",sx:from.x,sy:from.y,ex:to.x,ey:to.y,t:0,dur:Math.max(.22,d*.021),peak:2.4};
     D.slow=.55;
   }else if(mode==="arizona"&&(azStep===0||azStep===3)){
+    // fires from wherever the runner currently is -- no need to be right on
+    // top of the relay spot, same as a real outlet pass thrown on the move
     const leg=AZ_LEGS[azLeg], p=team[0], r=azStep===0?leg.relays[0]:leg.relays[1];
-    if(dist(p,r)<AZ_CHECK_R){
-      const d=dist(p,r);
-      ball={mode:"pass",sx:p.x,sy:p.y,ex:r.x,ey:r.y,t:0,dur:Math.max(.14,d*.02),peak:1.8};
-      azStep=azStep===0?1:4; sfx.pass();
-    }else sfx.nope();
+    const d=dist(p,r);
+    ball={mode:"pass",sx:p.x,sy:p.y,ex:r.x,ey:r.y,t:0,dur:Math.max(.2,d/22),peak:2+Math.min(6,d*.08)};
+    azStep=azStep===0?1:4; sfx.pass();
   }
 }
 function release(){
