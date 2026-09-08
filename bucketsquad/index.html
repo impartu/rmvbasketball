@@ -374,8 +374,8 @@ function nearestRack(){
 /* Each leg hugs a single sideline the whole way -- no mid-leg crossover -- and
    leg 1 is leg 0 mirrored 180 degrees, so the two lines never share a lane. */
 const AZ_LEGS=[
-  {hoop:0, start:{x:CW-4,y:CL-8}, relays:[{x:CW-4,y:CL*0.62},{x:CW-4,y:CL*0.30}]},
-  {hoop:1, start:{x:4,y:8}, relays:[{x:4,y:CL*0.38},{x:4,y:CL*0.70}]}
+  {hoop:0, start:{x:30,y:80}, relays:[{x:CW-4,y:CL*0.62},{x:CW-4,y:CL*0.30}], finish:{x:30,y:14}},
+  {hoop:1, start:{x:20,y:14}, relays:[{x:4,y:CL*0.38},{x:4,y:CL*0.70}], finish:{x:20,y:80}}
 ];
 let azLeg=0, azStep=0, azAttempts=0;
 function azAdvanceLeg(){
@@ -597,9 +597,10 @@ function step(dt){
         }else if(azStep===2){ ball=null; azStep=3; }
         else if(azStep===4){
           // fixed target, not the runner's live spot: this pass leads all the way
-          // to the rim, so the runner actually has to sprint the court to meet it
-          const h=target(), d=dist(rB,h);
-          ball={mode:"pass",sx:rB.x,sy:rB.y,ex:h.x,ey:h.y,t:0,dur:Math.max(.9,d/15),peak:9};
+          // to leg.finish (a realistic catch spot near the key, not the rim itself),
+          // so the runner has to sprint the court to meet it, then finish with a real shot
+          const fp=leg.finish, d=dist(rB,fp);
+          ball={mode:"pass",sx:rB.x,sy:rB.y,ex:fp.x,ey:fp.y,t:0,dur:Math.max(.9,d/15),peak:9};
           azStep=5; sfx.pass();
         }else if(azStep===5){ ball=null; azStep=6; }
       }
