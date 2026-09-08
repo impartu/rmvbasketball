@@ -18,6 +18,9 @@
   #clock b{color:var(--orange-lit)}
   #streak{margin-left:auto;border-color:rgba(240,87,31,.5)}
   #streak b{font-size:16px}
+  #mute{pointer-events:auto;width:38px;height:38px;border-radius:12px;font-size:17px;line-height:1;
+    background:rgba(26,18,12,.78);border:2px solid rgba(255,246,236,.18);color:var(--cream)}
+  #mute.off{opacity:.45}
   #callout{position:absolute;left:0;right:0;top:36%;text-align:center;font-family:Bungee,Impact,sans-serif;font-size:32px;color:#fff;text-shadow:0 4px 0 rgba(32,22,15,.55);opacity:0;pointer-events:none}
   @keyframes pop{0%{opacity:0;transform:scale(.7) translateY(10px)}18%{opacity:1;transform:scale(1.08)}70%{opacity:1;transform:scale(1)}100%{opacity:0;transform:translateY(-22px)}}
   #callout.go{animation:pop 1s ease-out forwards}
@@ -56,6 +59,7 @@
     <div class="chip"><small>SCORE</small><b id="score">0</b></div>
     <div class="chip" id="clock"><small>TIME</small><b id="time">60</b></div>
     <div class="chip" id="streak"><small>STREAK</small><b id="run">0</b></div>
+    <button id="mute" aria-label="Mute">&#128266;</button>
   </div>
   <div id="callout"></div>
   <div id="overlay"><div class="card" id="card"></div></div>
@@ -261,7 +265,7 @@ function buildFloor(){
     const base=i===0?0:CL, dir=i===0?1:-1;
     drawB(g,fx(h.x),fy(base+dir*KEY_L*.5),10.5*S/BH,dir>0?Math.PI:0);
   });
-  drawB(g,fx(CW/2),fy(CL/2),29*S/BH,0);
+  drawB(g,fx(CW/2),fy(CL/2),29*S/BH,Math.PI/2);
   mascot(g,37.5,29,2.7,-.15);
   mascot(g,13,65,2.7,.2);
   return c;
@@ -269,19 +273,61 @@ function buildFloor(){
 
 /* ---------------- game state ---------------- */
 const team=[
-  {x:CW/2-6,y:CL-24,vx:0,vy:0,bob:0,num:"3",jersey:"#F4571C"},
-  {x:CW/2+7,y:CL-32,vx:0,vy:0,bob:0,num:"7",jersey:"#2F7FBF"}
+  {x:CW/2-6,y:30,vx:0,vy:0,bob:0,num:"3",jersey:"#F4571C"},
+  {x:CW/2+7,y:24,vx:0,vy:0,bob:0,num:"7",jersey:"#2F7FBF"}
 ];
 let handler=0;
-const D={x:CW/2,y:CL-40,on:true,slow:0};
+const D={x:CW/2,y:19,on:true,slow:0};
 let ball=null, power=0, charging=false, dirCharge=1, stealCool=0;
 let score=0, run=0, best=0, timeLeft=60, playing=false, last=0, shake=0, ripples=[];
 
 const el=id=>document.getElementById(id);
+const AC=window.AudioContext||window.webkitAudioContext;
+let ac=null, master=null, muted=false, dribT=.3;
+function audio(){
+  if(!AC) return null;
+  if(!ac){ ac=new AC(); master=ac.createGain(); master.gain.value=.5; master.connect(ac.destination); }
+  if(ac.state==="suspended") ac.resume();
+  return ac;
+}
+function tone(f1,f2,dur,type,vol,delay){
+  const c=audio(); if(!c||muted) return;
+  const t=c.currentTime+(delay||0), o=c.createOscillator(), g=c.createGain();
+  o.type=type||"sine"; o.frequency.setValueAtTime(f1,t);
+  if(f2&&f2!==f1) o.frequency.exponentialRampToValueAtTime(Math.max(20,f2),t+dur);
+  g.gain.setValueAtTime(.0001,t);
+  g.gain.linearRampToValueAtTime(vol,t+Math.min(.015,dur*.3));
+  g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+  o.connect(g); g.connect(master); o.start(t); o.stop(t+dur+.03);
+}
+function noise(dur,f1,f2,vol,q,delay){
+  const c=audio(); if(!c||muted) return;
+  const t=c.currentTime+(delay||0), n=Math.max(1,Math.floor(c.sampleRate*dur));
+  const buf=c.createBuffer(1,n,c.sampleRate), d=buf.getChannelData(0);
+  for(let i=0;i<n;i++) d[i]=(Math.random()*2-1)*(1-i/n);
+  const src=c.createBufferSource(); src.buffer=buf;
+  const bp=c.createBiquadFilter(); bp.type="bandpass"; bp.Q.value=q||1.2;
+  bp.frequency.setValueAtTime(f1,t);
+  if(f2) bp.frequency.exponentialRampToValueAtTime(f2,t+dur);
+  const g=c.createGain(); g.gain.setValueAtTime(vol,t);
+  g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+  src.connect(bp); bp.connect(g); g.connect(master); src.start(t); src.stop(t+dur+.03);
+}
+const sfx={
+  dribble(){ tone(125,58,.10,"sine",.09); noise(.03,900,400,.025,1); },
+  shoot(){ noise(.17,600,2400,.045,.8); },
+  swish(){ noise(.30,3400,900,.10,1.5); tone(659,659,.13,"triangle",.075); tone(988,988,.18,"triangle",.065,.10); },
+  rim(){ tone(430,300,.17,"square",.06); tone(660,520,.10,"square",.04,.03); noise(.13,1500,600,.045,2.4); },
+  pass(){ noise(.09,1300,500,.055,1); tone(210,120,.08,"sine",.055); },
+  steal(){ tone(520,110,.30,"sawtooth",.075); },
+  streak(){ [659,880,1175].forEach((f,i)=>tone(f,f,.16,"triangle",.06,i*.09)); },
+  tip(){ tone(880,880,.10,"square",.08); tone(1318,1318,.15,"square",.08,.12); },
+  horn(){ tone(165,120,.75,"square",.10); tone(110,88,.75,"square",.07); }
+};
 const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
 const mate=()=>team[1-handler];
 const me=()=>team[handler];
-function target(){ const p=me(); return dist(p,hoops[0])<dist(p,hoops[1])?hoops[0]:hoops[1]; }
+function target(){ return hoops[0]; }   // one live basket, the top one
 function isThree(p,h){
   if(Math.abs(p.y-h.y)<=ARC_DY) return p.x<CORNER_X||p.x>CW-CORNER_X;
   return dist(p,h)>ARC_R;
@@ -305,7 +351,7 @@ stick.addEventListener("pointermove",e=>{if(e.pointerId===stickId)stickAt(e);});
 }));
 
 const fill=el("fill");
-function beginShot(){ if(!playing||ball) return; charging=true; power=0; dirCharge=1; }
+function beginShot(){ audio(); if(!playing||ball) return; charging=true; power=0; dirCharge=1; }
 function endShot(){ if(!charging) return; charging=false; release(); }
 el("shoot").addEventListener("pointerdown",e=>{e.preventDefault();beginShot();});
 ["pointerup","pointerleave","pointercancel"].forEach(t=>el("shoot").addEventListener(t,endShot));
@@ -328,6 +374,7 @@ function doPass(){
   if(!playing||ball||charging) return;
   const from=me(), to=mate();
   const d=dist(from,to);
+  sfx.pass();
   ball={mode:"pass",sx:from.x,sy:from.y,ex:to.x,ey:to.y,t:0,dur:Math.max(.22,d*.021),peak:2.4};
   D.slow=.55;
 }
@@ -346,6 +393,7 @@ function release(){
         ex:made?h.x:h.x+(Math.random()*2-1)*(1.4+err*7),
         ey:made?h.y:h.y+(Math.random()*2-1)*(1.4+err*7)};
   fill.setAttribute("stroke-dashoffset",289);
+  sfx.shoot();
 }
 function say(t,c){
   const n=el("callout"); n.textContent=t; n.style.color=c||"#fff";
@@ -356,9 +404,10 @@ function resolveShot(){
     const pts=ball.three?3:2;
     score+=pts; run++;
     ripples.push({x:ball.h.x,y:ball.h.y,t:0});
+    sfx.swish(); if(run>=3) sfx.streak();
     say(run>=3?`${pts} PTS · HEATING UP`:(ball.three?"THREE!":"BUCKET!"));
     shake=.35;
-  }else{ run=0; say(Math.random()<.5?"OFF THE RIM":"NO GOOD"); }
+  }else{ run=0; sfx.rim(); say(Math.random()<.5?"OFF THE RIM":"NO GOOD"); }
   el("score").textContent=score; el("run").textContent=run;
   ball=null;
 }
@@ -414,7 +463,7 @@ function step(dt){
       const bx=ball.sx+(ball.ex-ball.sx)*t, by=ball.sy+(ball.ey-ball.sy)*t;
       if(D.on&&Math.hypot(D.x-bx,D.y-by)<1.9){
         run=0; el("run").textContent=0; stealCool=.9;
-        say("PICKED OFF","#FFD08A");
+        sfx.steal(); say("PICKED OFF","#FFD08A");
         ball.mode="steal";
       }else if(ball.t>=ball.dur){
         handler=1-handler; ball=null;
@@ -424,6 +473,11 @@ function step(dt){
       resolveShot();
     }
   }
+
+  if(!ball){
+    dribT-=dt;
+    if(dribT<=0){ sfx.dribble(); dribT=.44-Math.min(.16,Math.hypot(p.vx,p.vy)*.014); }
+  }else dribT=Math.min(dribT,.18);
 
   ripples.forEach(r=>r.t+=dt);
   ripples=ripples.filter(r=>r.t<.7);
@@ -573,15 +627,16 @@ function startScreen(){
 }
 function start(){
   score=0; run=0; timeLeft=60; ball=null; charging=false; power=0; stealCool=0; handler=0;
-  team[0].x=CW/2-6; team[0].y=CL-24; team[0].vx=team[0].vy=0;
-  team[1].x=CW/2+7; team[1].y=CL-32;
-  D.x=CW/2; D.y=CL-40; D.slow=0;
+  team[0].x=CW/2-6; team[0].y=30; team[0].vx=team[0].vy=0;
+  team[1].x=CW/2+7; team[1].y=24;
+  D.x=CW/2; D.y=19; D.slow=0;
   el("score").textContent=0; el("run").textContent=0; el("time").textContent=60;
   fill.setAttribute("stroke-dashoffset",289);
   el("overlay").classList.add("hide");
-  playing=true; last=performance.now(); say("GO!");
+  playing=true; last=performance.now(); audio(); sfx.tip(); say("GO!"); dribT=.3;
 }
 function gameOver(){
+  sfx.horn();
   if(score>best){ best=score; saveBest(); }
   el("overlay").classList.remove("hide");
   el("card").innerHTML=`
@@ -592,6 +647,12 @@ function gameOver(){
     <p class="tip">Pass right as the defender commits. A shot with nobody within nine feet goes down far more often.</p>`;
   el("again").onclick=start;
 }
+el("mute").addEventListener("click",e=>{
+  muted=!muted;
+  e.currentTarget.classList.toggle("off",muted);
+  e.currentTarget.innerHTML=muted?"&#128263;":"&#128266;";
+  if(!muted){ audio(); sfx.dribble(); }
+});
 addEventListener("resize",layout);
 if(document.fonts) document.fonts.ready.then(layout);
 layout(); loadBest().then(startScreen); requestAnimationFrame(frame);
