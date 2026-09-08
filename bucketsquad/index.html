@@ -318,13 +318,18 @@ const db=firebase.firestore();
 
 let boards={game:[],three:[],arizona:[]};
 async function loadBoards(){
-  try{
-    const [g,t,a]=await Promise.all(["game","three","arizona"].map(m=>
-      db.collection("scores_"+m).orderBy("score","desc").limit(10).get()));
-    boards={game:g.docs.map(d=>({n:d.data().name,s:d.data().score})),
-            three:t.docs.map(d=>({n:d.data().name,s:d.data().score})),
-            arizona:a.docs.map(d=>({n:d.data().name,s:d.data().score}))};
-  }catch(e){}
+  // each mode's board is fetched independently -- one collection failing
+  // (missing rules, offline, etc.) must never blank out the other boards
+  const fetchOne=async(m)=>{
+    try{
+      const snap=await db.collection("scores_"+m).orderBy("score","desc").limit(10).get();
+      return snap.docs.map(d=>({n:d.data().name,s:d.data().score}));
+    }catch(e){ return null; }
+  };
+  const [g,t,a]=await Promise.all(["game","three","arizona"].map(fetchOne));
+  if(g) boards.game=g;
+  if(t) boards.three=t;
+  if(a) boards.arizona=a;
   try{ playerName=window.localStorage.getItem("bucketsquad:name")||""; }catch(e){}
 }
 async function saveScore(m,name,sc){
@@ -473,11 +478,20 @@ addEventListener("keyup",e=>{
 
 /* ---------------- actions ---------------- */
 function doPass(){
-  if(mode!=="game"||!playing||ball||charging) return;
-  const from=me(), to=mate(), d=dist(from,to);
-  sfx.pass();
-  ball={mode:"pass",sx:from.x,sy:from.y,ex:to.x,ey:to.y,t:0,dur:Math.max(.22,d*.021),peak:2.4};
-  D.slow=.55;
+  if(!playing||ball||charging) return;
+  if(mode==="game"){
+    const from=me(), to=mate(), d=dist(from,to);
+    sfx.pass();
+    ball={mode:"pass",sx:from.x,sy:from.y,ex:to.x,ey:to.y,t:0,dur:Math.max(.22,d*.021),peak:2.4};
+    D.slow=.55;
+  }else if(mode==="arizona"&&(azStep===0||azStep===3)){
+    const leg=AZ_LEGS[azLeg], p=team[0], r=azStep===0?leg.relays[0]:leg.relays[1];
+    if(dist(p,r)<AZ_CHECK_R){
+      const d=dist(p,r);
+      ball={mode:"pass",sx:p.x,sy:p.y,ex:r.x,ey:r.y,t:0,dur:Math.max(.14,d*.02),peak:1.8};
+      azStep=azStep===0?1:4; sfx.pass();
+    }else sfx.nope();
+  }
 }
 function release(){
   const p=me(), h=target(), d=dist(p,h), three=isThree(p,h);
@@ -569,15 +583,8 @@ function step(dt){
 
   if(mode==="arizona"){
     const leg=AZ_LEGS[azLeg], rA=leg.relays[0], rB=leg.relays[1];
-    if(azStep===0&&!ball&&dist(p,rA)<AZ_CHECK_R){
-      const d=dist(p,rA);
-      ball={mode:"pass",sx:p.x,sy:p.y,ex:rA.x,ey:rA.y,t:0,dur:Math.max(.14,d*.02),peak:1.8};
-      azStep=1; sfx.pass();
-    }else if(azStep===3&&!ball&&dist(p,rB)<AZ_CHECK_R){
-      const d=dist(p,rB);
-      ball={mode:"pass",sx:p.x,sy:p.y,ex:rB.x,ey:rB.y,t:0,dur:Math.max(.14,d*.02),peak:1.8};
-      azStep=4; sfx.pass();
-    }
+    // relay A and relay B passes are player-initiated (PASS button, in doPass());
+    // step() only advances a pass already in flight, plus the auto-led return/ahead throws
     if(ball&&ball.mode==="pass"&&(azStep===1||azStep===2||azStep===4||azStep===5)){
       if(azStep===2){ ball.ex=p.x; ball.ey=p.y; }
       ball.t+=dt;
@@ -896,7 +903,7 @@ function start(m){
     team[0].x=AZ_LEGS[0].start.x; team[0].y=AZ_LEGS[0].start.y;
   }
   el("runLabel").textContent=mode==="three"?"BALLS":mode==="arizona"?"TRIES":"STREAK";
-  el("pass").style.display=mode==="game"?"":"none";
+  el("pass").style.display=mode==="three"?"none":"";
   el("time").textContent=MODES[mode].secs;
   fill.setAttribute("stroke-dashoffset",289);
   if(band) band.setAttribute("stroke-dasharray","0 289");
