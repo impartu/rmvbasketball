@@ -58,6 +58,8 @@
   .play.alt:active{box-shadow:0 2px 0 #1B5379}
   .play.az{background:#3E8C56;box-shadow:0 5px 0 #235A34}
   .play.az:active{box-shadow:0 2px 0 #235A34}
+  .play.sh{background:#6B4FA0;box-shadow:0 5px 0 #402F60}
+  .play.sh:active{box-shadow:0 2px 0 #402F60}
   .play+.hint{font-size:11px;color:#8A7361;margin:6px 0 14px}
   .row{display:flex;gap:10px;margin-top:12px}
   .link{flex:1;border:0;background:#F0E4D6;color:#5A4636;border-radius:12px;padding:10px;
@@ -302,7 +304,8 @@ function buildFloor(){
 
 /* ---------------- modes, storage, leaderboard ---------------- */
 const el=id=>document.getElementById(id);
-const MODES={game:{label:"Two on One",secs:60},three:{label:"3-Point Contest",secs:60},arizona:{label:"Arizona Drill",secs:60}};
+const MODES={game:{label:"Two on One",secs:60},three:{label:"3-Point Contest",secs:60},arizona:{label:"Arizona Drill",secs:60},shuttle:{label:"Shuttle Run",secs:90,asc:true}};
+const fmtScore=(m,s)=>MODES[m].asc?(s/10).toFixed(1)+"s":s;
 let mode="game", playerName="";
 
 /* Shared leaderboard lives in Firebase (Cloud Firestore) so every visitor sees the
@@ -318,20 +321,21 @@ const firebaseConfig={
 firebase.initializeApp(firebaseConfig);
 const db=firebase.firestore();
 
-let boards={game:[],three:[],arizona:[]};
+let boards={game:[],three:[],arizona:[],shuttle:[]};
 async function loadBoards(){
   // each mode's board is fetched independently -- one collection failing
   // (missing rules, offline, etc.) must never blank out the other boards
   const fetchOne=async(m)=>{
     try{
-      const snap=await db.collection("scores_"+m).orderBy("score","desc").limit(10).get();
+      const snap=await db.collection("scores_"+m).orderBy("score",MODES[m].asc?"asc":"desc").limit(10).get();
       return snap.docs.map(d=>({n:d.data().name,s:d.data().score}));
     }catch(e){ return null; }
   };
-  const [g,t,a]=await Promise.all(["game","three","arizona"].map(fetchOne));
+  const [g,t,a,sh]=await Promise.all(["game","three","arizona","shuttle"].map(fetchOne));
   if(g) boards.game=g;
   if(t) boards.three=t;
   if(a) boards.arizona=a;
+  if(sh) boards.shuttle=sh;
   try{ playerName=window.localStorage.getItem("bucketsquad:name")||""; }catch(e){}
 }
 async function saveScore(m,name,sc){
@@ -409,6 +413,34 @@ function stepMirror(dt){
     m.x+=dx/d*17*dt; m.y+=dy/d*17*dt;
   }
   m.bob+=dt*7;
+}
+
+/* Shuttle Run: a straight conditioning sprint, no ball at all. The court is
+   split into 11 evenly spaced lanes (player in the middle); everyone runs the
+   same up-and-back pattern -- near free-throw line, back, half court, back,
+   far free-throw line, back, then one final full-length sprint to finish.
+   Checkpoints are just Y lines (touch anywhere across the width), not points,
+   so shStep only needs to compare y. The 10 AI racers loop the pattern (with
+   randomized pace) for the whole session and never affect the player's run. */
+const SHUTTLE_LANES=Array.from({length:11},(_,i)=>3+i*4.4);
+const SHUTTLE_STOPS=[75,94,47,94,19,94,0];
+const SHUTTLE_LOOP=[...SHUTTLE_STOPS,94];
+let shStep=0, shRacers=[];
+function shuttleReset(){
+  shStep=0;
+  const jerseys=["#2F7FBF","#4B6A50","#7A6A50","#B08A67","#8FE08A","#C97B4A"];
+  shRacers=SHUTTLE_LANES.filter((_,i)=>i!==5).map((x,idx)=>({
+    x, y:94, step:0, pace:0.82+Math.random()*0.36, bob:0, jersey:jerseys[idx%jerseys.length]
+  }));
+}
+function stepShuttleRacers(dt){
+  shRacers.forEach(r=>{
+    const target=SHUTTLE_LOOP[r.step];
+    const dy=target-r.y;
+    if(Math.abs(dy)<1.2) r.step=(r.step+1)%SHUTTLE_LOOP.length;
+    else r.y+=Math.sign(dy)*17*r.pace*dt;
+    r.bob+=dt*7;
+  });
 }
 
 const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
@@ -646,6 +678,19 @@ function step(dt){
     return;
   }
 
+  if(mode==="shuttle"){
+    stepShuttleRacers(dt);
+    if(shStep<SHUTTLE_STOPS.length&&Math.abs(p.y-SHUTTLE_STOPS[shStep])<1.5){
+      shStep++; sfx.pickup();
+      if(shStep>=SHUTTLE_STOPS.length){
+        score=Math.round((MODES.shuttle.secs-timeLeft)*10);   // deciseconds, an int for Firestore
+        playing=false; gameOver(); return;
+      }
+    }
+    if(shake>0) shake=Math.max(0,shake-dt);
+    return;
+  }
+
   /* two on one */
   const t2=mate(), h=target();
   const ang=Math.atan2(p.y-h.y,p.x-h.x);
@@ -775,6 +820,14 @@ function drawAZRelays(){
     drawKid({x:r.x,y:r.y,bob:0,num:i===0?"A":"B",jersey:i===0?"#7A6A50":"#4B6A50"},false,false);
   }));
 }
+function drawShuttleField(){
+  shRacers.forEach(r=>drawKid({x:r.x,y:r.y,bob:r.bob,num:"",jersey:r.jersey},false,false));
+  if(shStep<SHUTTLE_STOPS.length){
+    const ty=SHUTTLE_STOPS[shStep], pu=(Date.now()%700)/700;
+    ctx.strokeStyle=`rgba(143,224,138,${.75-pu*.55})`; ctx.lineWidth=S*(0.5+pu*0.3);
+    ctx.beginPath(); ctx.moveTo(fx(0),fy(ty)); ctx.lineTo(fx(CW),fy(ty)); ctx.stroke();
+  }
+}
 function draw(){
   ctx.save();
   if(shake>0) ctx.translate((Math.random()-.5)*shake*10,(Math.random()-.5)*shake*10);
@@ -803,6 +856,7 @@ function draw(){
 
   if(mode==="three") drawRacks();
   else if(mode==="arizona") drawAZRelays();
+  else if(mode==="shuttle") drawShuttleField();
 
   ripples.forEach(r=>{
     ctx.strokeStyle=`rgba(240,87,31,${.8-r.t/.7})`; ctx.lineWidth=S*.5;
@@ -871,7 +925,12 @@ function frame(ts){
     step(dt);
     if(playing){
       timeLeft-=dt;
-      el("time").textContent=Math.max(0,Math.ceil(timeLeft));
+      if(mode==="shuttle"){
+        el("time").textContent=(MODES.shuttle.secs-timeLeft).toFixed(1);
+        el("run").textContent=`${Math.min(shStep+1,SHUTTLE_STOPS.length)}/${SHUTTLE_STOPS.length}`;
+      }else{
+        el("time").textContent=Math.max(0,Math.ceil(timeLeft));
+      }
       if(timeLeft<=0){ playing=false; gameOver(); }
     }
   }
@@ -891,7 +950,7 @@ function nameFromInput(){
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 function homeScreen(){
-  const bestG=boards.game[0], bestT=boards.three[0], bestA=boards.arizona[0];
+  const bestG=boards.game[0], bestT=boards.three[0], bestA=boards.arizona[0], bestSh=boards.shuttle[0];
   card(`<h1>BucketSquad<span>Hoops</span></h1>
     <input id="nm" placeholder="Your name" maxlength="12" value="${esc(playerName)}">
     <button class="play" data-m="game">2 on 1 &middot; 60 sec</button>
@@ -900,6 +959,8 @@ function homeScreen(){
     <div class="hint">${bestT?`Top: ${esc(bestT.n)} ${bestT.s}`:"5 racks, money balls worth 2."}</div>
     <button class="play az" data-m="arizona">Arizona Drill &middot; 60 sec</button>
     <div class="hint">${bestA?`Top: ${esc(bestA.n)} ${bestA.s}`:"Full-court layups, makes and misses."}</div>
+    <button class="play sh" data-m="shuttle">Shuttle Run &middot; race the clock</button>
+    <div class="hint">${bestSh?`Best: ${fmtScore("shuttle",bestSh.s)} by ${esc(bestSh.n)}`:"Full suicides, race 10 simulated teammates."}</div>
     <div class="row">
       <button class="link" id="lbBtn">Leaderboard</button>
       <button class="link" id="defBtn">Defender: ${D.on?"On":"Off"}</button>
@@ -916,9 +977,10 @@ function boardScreen(m){
       <button class="tab ${m==="game"?"on":""}" data-b="game">2 on 1</button>
       <button class="tab ${m==="three"?"on":""}" data-b="three">3PT</button>
       <button class="tab ${m==="arizona"?"on":""}" data-b="arizona">Arizona</button>
+      <button class="tab ${m==="shuttle"?"on":""}" data-b="shuttle">Shuttle</button>
     </div>
     <ol class="lb">${rows.length?rows.map((r,i)=>
-      `<li><span class="pos">${i+1}</span><span class="who">${esc(r.n)}</span><span class="pts">${r.s}</span></li>`).join("")
+      `<li><span class="pos">${i+1}</span><span class="who">${esc(r.n)}</span><span class="pts">${fmtScore(m,r.s)}</span></li>`).join("")
       :`<li class="empty">Nobody on the board yet.</li>`}</ol>
     <button class="play" id="back">Back</button>`);
   el("card").querySelectorAll("[data-b]").forEach(b=>b.onclick=()=>boardScreen(b.dataset.b));
@@ -940,8 +1002,13 @@ function start(m){
     team[0].x=AZ_LEGS[0].start.x; team[0].y=AZ_LEGS[0].start.y;
     team[1].x=AZ_LEGS[mLeg].start.x; team[1].y=AZ_LEGS[mLeg].start.y; team[1].bob=0;
   }
-  el("runLabel").textContent=mode==="three"?"BALLS":mode==="arizona"?"TRIES":"STREAK";
-  el("pass").style.display=mode==="three"?"none":"";
+  if(mode==="shuttle"){
+    shuttleReset();
+    team[0].x=SHUTTLE_LANES[5]; team[0].y=94;
+  }
+  el("runLabel").textContent=mode==="three"?"BALLS":mode==="arizona"?"TRIES":mode==="shuttle"?"LEG":"STREAK";
+  el("pass").style.display=(mode==="three"||mode==="shuttle")?"none":"";
+  el("shootWrap").style.display=mode==="shuttle"?"none":"";
   el("time").textContent=MODES[mode].secs;
   fill.setAttribute("stroke-dashoffset",289);
   if(band) band.setAttribute("stroke-dasharray","0 289");
@@ -954,6 +1021,10 @@ function start(m){
 async function gameOver(){
   sfx.horn();
   const perfect=mode==="three"&&score===34;
+  if(mode==="shuttle"&&shStep<SHUTTLE_STOPS.length){
+    gameOverCard("dnf",perfect);
+    return;
+  }
   if(playerName){
     const {ok,rank}=await saveScore(mode,playerName,score);
     gameOverCard(ok?rank:"failed",perfect);
@@ -962,14 +1033,15 @@ async function gameOver(){
   }
 }
 function gameOverCard(rank,perfect){
-  const needsName=rank===null, failed=rank==="failed";
+  const needsName=rank===null, failed=rank==="failed", dnf=rank==="dnf";
   const msg=needsName?"Enter your name to save this score."
+    :dnf?"Time's up &mdash; didn't finish the run."
     :failed?"Couldn't save your score &mdash; check your connection."
     :rank===0?"Top of the board!"
     :rank>0?`#${rank+1} on the ${MODES[mode].label} board`
     :"Nice run.";
   card(`<h1>${mode==="three"?"Rack Over":"Time"}</h1>
-    <div class="final">${score}</div>
+    <div class="final">${dnf?"&mdash;":fmtScore(mode,score)}</div>
     <div class="sub">${msg}${perfect?" &middot; PERFECT 34!":""}</div>
     ${needsName?`<input id="nm" placeholder="Your name" maxlength="12">
     <button class="play" id="saveScore">Save score</button>`:`<button class="play" id="again">Play again</button>`}

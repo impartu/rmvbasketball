@@ -54,19 +54,34 @@ Everything lives in one file: inline `<style>`, DOM for the HUD/joystick/overlay
   offensive players), `handler` (index of whoever has the ball, derives `me()`/`mate()`),
   `D` (the defender), `ball` (`null` when held, otherwise an object with `mode` of
   `"shot"`, `"pass"`, or `"steal"`), plus `score`, `run`, `timeLeft`, `playing`, etc.
-- **Modes.** `mode` is `"game"` (Two on One), `"three"` (3-Point Contest), or `"arizona"`
-  (Arizona Drill), driven by `MODES`. Each mode reuses the same sim/render loop but
-  branches early in `step()`/`draw()` instead of forking into a separate game.
+- **Modes.** `mode` is `"game"` (Two on One), `"three"` (3-Point Contest), `"arizona"`
+  (Arizona Drill), or `"shuttle"` (Shuttle Run), driven by `MODES`. Each mode reuses the
+  same sim/render loop but branches early in `step()`/`draw()` instead of forking into a
+  separate game.
   - Three-mode: `racks`/`RACK_SPOTS` place five ball racks on the floor (`buildRacks()`),
     the top-of-the-key rack is all money balls, the other four end in one;
     `holding`/`moneyHeld` track what's in hand.
   - Arizona-mode: a scripted full-court relay, not a second opponent-driven game. The
     player (`team[0]`) always carries the ball; `AZ_LEGS` holds two legs (one per basket)
-    each with a `start` and two fixed relay spots — `azStep` (0-6, commented above its
-    declaration) walks the ball out to relay A, back, out to relay B, then B leads a pass
-    the rest of the way to the rim, where a normal charge/release shot fires. Either way,
-    `resolveShot()` calls `azAdvanceLeg()`, which flips `azLeg` and teleports the runner to
-    the other leg's start — the loop never pauses to wait for a rebound.
+    each with a `start`, two fixed relay spots, and a `finish` (a realistic catch spot near
+    the key, not the rim itself) — `azStep` (0-6, commented above its declaration) walks
+    the ball out to relay A, back, out to relay B, then B leads a pass the rest of the way
+    to `finish`, where a normal charge/release shot fires. `resolveShot()` calls
+    `azAdvanceLeg()`, which flips `azLeg` and teleports the runner to the other leg's start
+    — the loop never pauses to wait for a rebound. `team[1]` doubles as a mirror runner
+    (`stepMirror()`) that runs its own independent leg (`mLeg`, decoupled from the
+    player's `azLeg` on purpose — see the comment above `mWp`) and always makes its shot,
+    adding straight to the shared `score`.
+  - Shuttle-mode: pure conditioning, no ball. `SHUTTLE_STOPS` is the player's course (a Y
+    value per line to touch, in order — checkpoints are lines across the whole width, not
+    points, so `shStep`'s advance only compares `p.y`); `SHUTTLE_LOOP` is the same course
+    with a trailing return-to-baseline so the 10 AI racers (`shRacers`, one per
+    `SHUTTLE_LANES` slot other than the player's) can loop it forever at their own
+    randomized pace, entirely independent of the player. Scoring is time, not points —
+    `MODES.shuttle.asc:true` flips the leaderboard to ascending, and `fmtScore()` renders
+    it as seconds instead of a raw number everywhere a score is shown. `timeLeft` here is
+    just a safety cap (see `frame()`), not a real countdown; the mode ends the instant
+    `shStep` completes, or via `gameOver()`'s explicit DNF path if the cap is hit first.
   - `target()` is mode-aware (`hoops[0]` for game/three, whichever basket the current
     Arizona leg is running at); shots in three-mode must additionally clear `isThree()`
     (no close-range attempts).
@@ -93,16 +108,24 @@ meant to be rewarded; a lazy pass through the defender can be picked off.
 **Leaderboard storage:** the top-10-per-mode leaderboard lives in Cloud Firestore (project
 `bucketsquadgame`), not in browser storage — `rmvbasketball.com` is plain static GitHub
 Pages with no backend of its own, so anything meant to be shared across visitors has to
-live somewhere off-site. `loadBoards()`/`saveScore()` read/write two flat collections,
-`scores_game` and `scores_three` (one doc per submitted score: `name`, `score`, `ts`),
-each queried with a single `orderBy("score","desc").limit(10)` — deliberately two
-collections instead of one with a `mode` field, so no composite index is needed. The
-`firebaseConfig` object embedded in the script is meant to be public; Firestore access is
-controlled by the security rules on the project console, not by hiding the config. Every
-Firestore call is wrapped in try/catch and degrades to an empty/unsaved leaderboard on
-failure (offline, rules misconfigured, etc.) rather than breaking the game. The player's
-own name is the one piece of state that's still local-only, via `localStorage`
-(`bucketsquad:name`) — it doesn't need to be shared, so it never touches Firestore.
+live somewhere off-site. `loadBoards()`/`saveScore()` read/write one flat collection per
+mode (`scores_game`, `scores_three`, `scores_arizona`, `scores_shuttle` — one doc per
+submitted score: `name`, `score`, `ts`), each queried with a single `orderBy("score", ...)
+.limit(10)` — deliberately per-mode collections instead of one with a `mode` field, so no
+composite index is needed. Sort direction comes from `MODES[m].asc` (shuttle's is
+ascending — lower time wins; everything else is descending). Adding a mode means adding
+its Firestore security-rules block by hand on the console (see the git history for the
+exact text last given to the user) — nothing in the client enforces that they match up,
+so a missing rules block silently permission-denies that one mode's reads/writes without
+touching the others (`loadBoards()` fetches each collection independently precisely so
+that a failure like this can't blank out the boards that do work).
+The `firebaseConfig` object embedded in the script is meant to be public; Firestore access
+is controlled by the security rules on the project console, not by hiding the config.
+Every Firestore call is wrapped in try/catch — `saveScore()` returns `{ok, rank}` so the
+UI can tell a real write failure (shown honestly as "Couldn't save your score") apart from
+a successful save that's just outside the top 10 ("Nice run."). The player's own name is
+the one piece of state that's still local-only, via `localStorage` (`bucketsquad:name`)
+— it doesn't need to be shared, so it never touches Firestore.
 
 ## Workflow
 
