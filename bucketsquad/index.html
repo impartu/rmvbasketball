@@ -39,8 +39,8 @@
   #meter{position:absolute;inset:-9px;pointer-events:none}
   #overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(18,12,8,.82);backdrop-filter:blur(3px);padding:20px}
   #overlay.hide{display:none}
-  .card{width:100%;max-width:330px;text-align:center;background:var(--cream);color:var(--ink);border-radius:26px;padding:22px 20px;border:5px solid var(--orange);box-shadow:0 14px 0 rgba(0,0,0,.35)}
-  .card h1{font-family:Bungee,Impact,sans-serif;font-weight:400;font-size:32px;line-height:.95;margin:0 0 4px;color:var(--orange)}
+  .card{width:100%;max-width:330px;max-height:100%;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;text-align:center;background:var(--cream);color:var(--ink);border-radius:26px;padding:20px 20px 18px;border:5px solid var(--orange);box-shadow:0 14px 0 rgba(0,0,0,.35)}
+  .card h1{font-family:Bungee,Impact,sans-serif;font-weight:400;font-size:30px;line-height:.95;margin:0 0 4px;color:var(--orange)}
   .card h1 span{display:block;color:var(--sky-deep);font-size:24px}
   .card p{font-size:14px;line-height:1.5;color:#5A4636;margin:12px 0 14px}
   .card p b{color:var(--ink)}
@@ -51,7 +51,7 @@
   .toggle button.on{background:var(--sky-deep);color:#fff}
   .play{width:100%;border:0;border-radius:16px;padding:14px;font-family:Bungee,Impact,sans-serif;font-size:19px;color:#fff;background:var(--orange);box-shadow:0 5px 0 #8E2E0C}
   .play:active{transform:translateY(3px);box-shadow:0 2px 0 #8E2E0C}
-  #nm{width:100%;border:3px solid #E0CDB8;border-radius:14px;padding:11px 13px;margin:4px 0 14px;
+  #nm{width:100%;border:3px solid #E0CDB8;border-radius:14px;padding:10px 13px;margin:4px 0 10px;
     font-family:inherit;font-weight:900;font-size:15px;color:var(--ink);background:#fff;text-align:center}
   #nm:focus{outline:none;border-color:var(--sky-deep)}
   .play.alt{background:var(--sky-deep);box-shadow:0 5px 0 #1B5379}
@@ -60,8 +60,8 @@
   .play.az:active{box-shadow:0 2px 0 #235A34}
   .play.sh{background:#6B4FA0;box-shadow:0 5px 0 #402F60}
   .play.sh:active{box-shadow:0 2px 0 #402F60}
-  .play+.hint{font-size:11px;color:#8A7361;margin:6px 0 14px}
-  .row{display:flex;gap:10px;margin-top:12px}
+  .play+.hint{font-size:11px;color:#8A7361;margin:4px 0 10px}
+  .row{display:flex;gap:10px;margin-top:10px}
   .link{flex:1;border:0;background:#F0E4D6;color:#5A4636;border-radius:12px;padding:10px;
     font-family:inherit;font-weight:900;font-size:13px}
   .tabs{display:flex;gap:8px;margin:12px 0}
