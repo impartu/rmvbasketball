@@ -8,11 +8,16 @@ Guidance for Claude Code when working in this repository.
 file in the repo root binds the custom domain — do not rename, move, or delete it, or the
 site goes down.
 
-- **`index.html` (root)** is a redirect page pointing at the RMV Basketball Facebook
-  group. **Do not touch it.** It is not a landing page to improve, and edits here are
-  never part of a game change.
+- **`index.html` (root)** is the RMV Basketball landing page: a Three.js 3D scene of the
+  Pavilion gym with a "take three shots" mini-game that reveals a Facebook group CTA
+  after three makes. It depends on `styles.css`, `config.js`, `court.js`, and
+  `assets/` (`three.min.js`, `THREE-LICENSE.txt`, `pavilion.jpg`) all in the repo root,
+  plus `.nojekyll`. `config.js` holds the Facebook group URL, an optional `logoUrl`, and
+  the `autoRedirectAfterThree` flag. Everything is static/relative-path — no build step,
+  no CDN, Three.js is vendored locally.
 - **`bucketsquad/index.html`** is the project: BucketSquad Hoops, a single-file HTML
-  canvas game served at `rmvbasketball.com/bucketsquad`.
+  canvas game served at `rmvbasketball.com/bucketsquad`. Unaffected by the root landing
+  page.
 
 ## Build and dependencies
 
