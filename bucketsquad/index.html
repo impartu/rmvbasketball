@@ -18,9 +18,10 @@
   #clock b{color:var(--orange-lit)}
   #streak{margin-left:auto;border-color:rgba(240,87,31,.5)}
   #streak b{font-size:16px}
-  #mute{pointer-events:auto;width:38px;height:38px;border-radius:12px;font-size:17px;line-height:1;
+  #mute,#exit{pointer-events:auto;width:38px;height:38px;border-radius:12px;font-size:17px;line-height:1;
     background:rgba(26,18,12,.78);border:2px solid rgba(255,246,236,.18);color:var(--cream)}
   #mute.off{opacity:.45}
+  #exit{font-size:15px;font-weight:900}
   #callout{position:absolute;left:0;right:0;top:36%;text-align:center;font-family:Bungee,Impact,sans-serif;font-size:32px;color:#fff;text-shadow:0 4px 0 rgba(32,22,15,.55);opacity:0;pointer-events:none}
   @keyframes pop{0%{opacity:0;transform:scale(.7) translateY(10px)}18%{opacity:1;transform:scale(1.08)}70%{opacity:1;transform:scale(1)}100%{opacity:0;transform:translateY(-22px)}}
   #callout.go{animation:pop 1s ease-out forwards}
@@ -83,6 +84,7 @@
     <div class="chip" id="clock"><small>TIME</small><b id="time">60</b></div>
     <div class="chip" id="streak"><small id="runLabel">STREAK</small><b id="run">0</b></div>
     <button id="mute" aria-label="Mute">&#128266;</button>
+    <button id="exit" aria-label="Exit to menu">&#10005;</button>
   </div>
   <div id="callout"></div>
   <div id="overlay"><div class="card" id="card"></div></div>
@@ -300,7 +302,7 @@ function buildFloor(){
 
 /* ---------------- modes, storage, leaderboard ---------------- */
 const el=id=>document.getElementById(id);
-const MODES={game:{label:"Two on One",secs:60},three:{label:"3-Point Contest",secs:60},arizona:{label:"Arizona Drill",secs:120}};
+const MODES={game:{label:"Two on One",secs:60},three:{label:"3-Point Contest",secs:60},arizona:{label:"Arizona Drill",secs:60}};
 let mode="game", playerName="";
 
 /* Shared leaderboard lives in Firebase (Cloud Firestore) so every visitor sees the
@@ -382,6 +384,28 @@ function azAdvanceLeg(){
   azLeg=1-azLeg; azStep=0;
   const s=AZ_LEGS[azLeg].start;
   team[0].x=s.x; team[0].y=s.y; team[0].vx=team[0].vy=0;
+}
+
+/* the mirror (team[1]) always runs the leg opposite the player's current one,
+   walks its own waypoint chain, and never misses -- pure atmosphere, its makes
+   just add straight to the shared score */
+let mWp=0;
+function stepMirror(dt){
+  const leg=AZ_LEGS[1-azLeg];
+  const path=[leg.start,leg.relays[0],leg.relays[1],leg.finish,hoops[leg.hoop]];
+  const m=team[1], wp=path[mWp];
+  const dx=wp.x-m.x, dy=wp.y-m.y, d=Math.hypot(dx,dy)||1;
+  if(d<1.6){
+    if(mWp===path.length-1){
+      score++; sfx.swish(); ripples.push({x:wp.x,y:wp.y,t:0}); hud();
+      mWp=0;
+      const ns=AZ_LEGS[1-azLeg].start;
+      m.x=ns.x; m.y=ns.y;
+    }else mWp++;
+  }else{
+    m.x+=dx/d*17*dt; m.y+=dy/d*17*dt;
+  }
+  m.bob+=dt*7;
 }
 
 const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
@@ -583,6 +607,7 @@ function step(dt){
   }
 
   if(mode==="arizona"){
+    stepMirror(dt);
     const leg=AZ_LEGS[azLeg], rA=leg.relays[0], rB=leg.relays[1];
     // relay A and relay B passes are player-initiated (PASS button, in doPass());
     // step() only advances a pass already in flight, plus the auto-led return/ahead throws
@@ -801,6 +826,11 @@ function draw(){
     drawKid(me(),!ball,false);
   }else{
     drawKid(team[0],(mode==="arizona"?true:holding)&&!ball,false);
+    if(mode==="arizona"){
+      drawKid(team[1],true,false);
+      const mdr=Math.abs(Math.sin(team[1].bob*3));
+      drawBall(fx(team[1].x)+S*1.5,fy(team[1].y)+S*(.6+mdr*.5),S*.55,false);
+    }
   }
 
   if(charging&&!ball){
@@ -863,7 +893,7 @@ function homeScreen(){
     <div class="hint">${bestG?`Top: ${esc(bestG.n)} ${bestG.s}`:"Pass, find the open man, score."}</div>
     <button class="play alt" data-m="three">3-Point Contest</button>
     <div class="hint">${bestT?`Top: ${esc(bestT.n)} ${bestT.s}`:"5 racks, money balls worth 2."}</div>
-    <button class="play az" data-m="arizona">Arizona Drill &middot; 2 min</button>
+    <button class="play az" data-m="arizona">Arizona Drill &middot; 60 sec</button>
     <div class="hint">${bestA?`Top: ${esc(bestA.n)} ${bestA.s}`:"Full-court layups, makes and misses."}</div>
     <div class="row">
       <button class="link" id="lbBtn">Leaderboard</button>
@@ -901,8 +931,9 @@ function start(m){
   holding=false; moneyHeld=0;
   if(mode==="three"){ buildRacks(); activeRack=0; }
   if(mode==="arizona"){
-    azLeg=0; azStep=0; azAttempts=0;
+    azLeg=0; azStep=0; azAttempts=0; mWp=0;
     team[0].x=AZ_LEGS[0].start.x; team[0].y=AZ_LEGS[0].start.y;
+    team[1].x=AZ_LEGS[1].start.x; team[1].y=AZ_LEGS[1].start.y; team[1].bob=0;
   }
   el("runLabel").textContent=mode==="three"?"BALLS":mode==="arizona"?"TRIES":"STREAK";
   el("pass").style.display=mode==="three"?"none":"";
@@ -917,19 +948,36 @@ function start(m){
 
 async function gameOver(){
   sfx.horn();
-  const nm=playerName||"Player";
-  const rank=await saveScore(mode,nm,score);
   const perfect=mode==="three"&&score===34;
+  if(playerName){
+    const rank=await saveScore(mode,playerName,score);
+    gameOverCard(rank,perfect);
+  }else{
+    gameOverCard(null,perfect);
+  }
+}
+function gameOverCard(rank,perfect){
+  const needsName=rank===null;
   card(`<h1>${mode==="three"?"Rack Over":"Time"}</h1>
     <div class="final">${score}</div>
-    <div class="sub">${rank===0?"Top of the board!":rank>0?`#${rank+1} on the ${MODES[mode].label} board`:"Nice run."}${perfect?" &middot; PERFECT 34!":""}</div>
-    <button class="play" id="again">Play again</button>
+    <div class="sub">${needsName?"Enter your name to save this score.":(rank===0?"Top of the board!":rank>0?`#${rank+1} on the ${MODES[mode].label} board`:"Nice run.")}${perfect?" &middot; PERFECT 34!":""}</div>
+    ${needsName?`<input id="nm" placeholder="Your name" maxlength="12">
+    <button class="play" id="saveScore">Save score</button>`:`<button class="play" id="again">Play again</button>`}
     <div class="row">
-      <button class="link" id="lbBtn2">Leaderboard</button>
+      ${needsName?`<button class="link" id="skip">Skip</button>`:`<button class="link" id="lbBtn2">Leaderboard</button>`}
       <button class="link" id="menu">Change mode</button>
     </div>`);
-  el("again").onclick=()=>start(mode);
-  el("lbBtn2").onclick=()=>boardScreen(mode);
+  if(needsName){
+    el("saveScore").onclick=async()=>{
+      nameFromInput();
+      const rank=await saveScore(mode,playerName||"Player",score);
+      gameOverCard(rank,perfect);
+    };
+    el("skip").onclick=()=>start(mode);
+  }else{
+    el("again").onclick=()=>start(mode);
+    el("lbBtn2").onclick=()=>boardScreen(mode);
+  }
   el("menu").onclick=homeScreen;
 }
 
@@ -938,6 +986,10 @@ el("mute").addEventListener("click",e=>{
   e.currentTarget.classList.toggle("off",muted);
   e.currentTarget.innerHTML=muted?"&#128263;":"&#128266;";
   if(!muted){ audio(); sfx.dribble(); }
+});
+el("exit").addEventListener("click",()=>{
+  playing=false; charging=false; ball=null;
+  homeScreen();
 });
 addEventListener("resize",layout);
 if(document.fonts) document.fonts.ready.then(layout);
