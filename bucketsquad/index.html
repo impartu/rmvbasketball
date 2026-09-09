@@ -336,11 +336,12 @@ async function loadBoards(){
 }
 async function saveScore(m,name,sc){
   const nm=(name||"Player").slice(0,12);
+  let ok=true;
   try{
     await db.collection("scores_"+m).add({name:nm,score:sc,ts:firebase.firestore.FieldValue.serverTimestamp()});
-  }catch(e){}
+  }catch(e){ ok=false; }
   await loadBoards();
-  return boards[m].findIndex(r=>r.n===nm&&r.s===sc);
+  return {ok, rank: boards[m].findIndex(r=>r.n===nm&&r.s===sc)};
 }
 
 /* ---------------- game state ---------------- */
@@ -954,17 +955,22 @@ async function gameOver(){
   sfx.horn();
   const perfect=mode==="three"&&score===34;
   if(playerName){
-    const rank=await saveScore(mode,playerName,score);
-    gameOverCard(rank,perfect);
+    const {ok,rank}=await saveScore(mode,playerName,score);
+    gameOverCard(ok?rank:"failed",perfect);
   }else{
     gameOverCard(null,perfect);
   }
 }
 function gameOverCard(rank,perfect){
-  const needsName=rank===null;
+  const needsName=rank===null, failed=rank==="failed";
+  const msg=needsName?"Enter your name to save this score."
+    :failed?"Couldn't save your score &mdash; check your connection."
+    :rank===0?"Top of the board!"
+    :rank>0?`#${rank+1} on the ${MODES[mode].label} board`
+    :"Nice run.";
   card(`<h1>${mode==="three"?"Rack Over":"Time"}</h1>
     <div class="final">${score}</div>
-    <div class="sub">${needsName?"Enter your name to save this score.":(rank===0?"Top of the board!":rank>0?`#${rank+1} on the ${MODES[mode].label} board`:"Nice run.")}${perfect?" &middot; PERFECT 34!":""}</div>
+    <div class="sub">${msg}${perfect?" &middot; PERFECT 34!":""}</div>
     ${needsName?`<input id="nm" placeholder="Your name" maxlength="12">
     <button class="play" id="saveScore">Save score</button>`:`<button class="play" id="again">Play again</button>`}
     <div class="row">
@@ -974,8 +980,8 @@ function gameOverCard(rank,perfect){
   if(needsName){
     el("saveScore").onclick=async()=>{
       nameFromInput();
-      const rank=await saveScore(mode,playerName||"Player",score);
-      gameOverCard(rank,perfect);
+      const {ok,rank}=await saveScore(mode,playerName||"Player",score);
+      gameOverCard(ok?rank:"failed",perfect);
     };
     el("skip").onclick=()=>start(mode);
   }else{
