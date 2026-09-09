@@ -389,17 +389,19 @@ function azAdvanceLeg(){
 /* the mirror (team[1]) always runs the leg opposite the player's current one,
    walks its own waypoint chain, and never misses -- pure atmosphere, its makes
    just add straight to the shared score */
-let mWp=0;
+let mWp=0, mLeg=1;   // the mirror's own leg tracker -- fully independent of
+                      // the player's azLeg, so it never resets when the
+                      // player scores and can lap them if it's faster
 function stepMirror(dt){
-  const leg=AZ_LEGS[1-azLeg];
+  const leg=AZ_LEGS[mLeg];
   const path=[leg.start,leg.relays[0],leg.relays[1],leg.finish,hoops[leg.hoop]];
   const m=team[1], wp=path[mWp];
   const dx=wp.x-m.x, dy=wp.y-m.y, d=Math.hypot(dx,dy)||1;
   if(d<1.6){
     if(mWp===path.length-1){
       score++; sfx.swish(); ripples.push({x:wp.x,y:wp.y,t:0}); hud();
-      mWp=0;
-      const ns=AZ_LEGS[1-azLeg].start;
+      mLeg=1-mLeg; mWp=0;
+      const ns=AZ_LEGS[mLeg].start;
       m.x=ns.x; m.y=ns.y;
     }else mWp++;
   }else{
@@ -756,8 +758,10 @@ function drawRacks(){
   });
 }
 function drawAZRelays(){
-  AZ_LEGS[azLeg].relays.forEach((r,i)=>{
-    const active=i===0?azStep<=2:azStep>=3&&azStep<=5;
+  // both legs are always "live" -- the player runs one, the mirror runs the
+  // other -- so both sets of relay/queue groups need to be on screen always
+  AZ_LEGS.forEach((leg,li)=>leg.relays.forEach((r,i)=>{
+    const active=li===azLeg&&(i===0?azStep<=2:azStep>=3&&azStep<=5);
     const qDir=r.x<CW/2?-1:1;   // queue trails toward the nearer sideline, off the court
     [1,2].forEach(k=>{
       drawKid({x:r.x+qDir*k*1.4,y:r.y+(k%2?-0.9:0.9),bob:0,num:"",jersey:"#5C4E3F"},false,false);
@@ -768,7 +772,7 @@ function drawAZRelays(){
       ctx.beginPath(); ctx.arc(fx(r.x),fy(r.y),S*(2+pu*2.6),0,7); ctx.stroke();
     }
     drawKid({x:r.x,y:r.y,bob:0,num:i===0?"A":"B",jersey:i===0?"#7A6A50":"#4B6A50"},false,false);
-  });
+  }));
 }
 function draw(){
   ctx.save();
@@ -931,9 +935,9 @@ function start(m){
   holding=false; moneyHeld=0;
   if(mode==="three"){ buildRacks(); activeRack=0; }
   if(mode==="arizona"){
-    azLeg=0; azStep=0; azAttempts=0; mWp=0;
+    azLeg=0; azStep=0; azAttempts=0; mWp=0; mLeg=1;
     team[0].x=AZ_LEGS[0].start.x; team[0].y=AZ_LEGS[0].start.y;
-    team[1].x=AZ_LEGS[1].start.x; team[1].y=AZ_LEGS[1].start.y; team[1].bob=0;
+    team[1].x=AZ_LEGS[mLeg].start.x; team[1].y=AZ_LEGS[mLeg].start.y; team[1].bob=0;
   }
   el("runLabel").textContent=mode==="three"?"BALLS":mode==="arizona"?"TRIES":"STREAK";
   el("pass").style.display=mode==="three"?"none":"";
