@@ -640,15 +640,15 @@ function drawDodgeballExtras(){
     const activeIdx=ri===0?dbActiveA:dbActiveB, heldByThisTeam=ri===0?dbBallHeldA:dbBallHeldB;
     roster.forEach((m,i)=>{
       if(!m.alive){ ctx.save(); ctx.globalAlpha=.35; drawKid(m,false,false); ctx.restore(); return; }
-      const isBallCarrier=i===activeIdx&&heldByThisTeam&&!ball;
-      if(isBallCarrier){
-        // drawn first, low and centered, so the body (drawn next) partially
-        // covers it -- reads as a real dribble regardless of which way they're
-        // facing, instead of a ball floating off to a fixed side
-        const dr=Math.abs(Math.sin(m.bob*3));
-        drawBall(fx(m.x),fy(m.y)+S*(0.85+dr*.3),S*.5,false);
+      // no "has ball" ring in this mode -- the ball drawn in their hand below
+      // is itself the signal for who's carrying it, on either team
+      drawKid(m,false,false);
+      if(i===activeIdx&&heldByThisTeam&&!ball){
+        // sits in the (screen-right) hand -- same arm-endpoint math as
+        // drawKid's own swinging-arm line, drawn on top so it reads as held
+        const px=fx(m.x), py=fy(m.y), r=S*1.2, sw=Math.sin(m.bob*2)*r*.22;
+        drawBall(px+r*1.12,py-sw,S*.5,false);
       }
-      drawKid(m,i===activeIdx&&heldByThisTeam,false);
     });
   });
   if(dbLooseA) drawBall(fx(dbLooseA.x),fy(dbLooseA.y),S*.55,false);
