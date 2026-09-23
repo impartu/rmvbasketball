@@ -13,7 +13,10 @@ itself — it's just a shared backlog.
   (control passes to a teammate on a hit, with a respawn cooldown); Team B is
   fully automated. Tunables (`DB_RESPAWN_T`, `DB_THROW_ACC`, `DB_THROW_MIN/MAX`,
   `DB_ENEMY_SKILL`, `DB_SETUP_T`) are exposed at the top of the mode's code for
-  further difficulty tuning. No leaderboard (win/lose match, not a score).
+  further difficulty tuning. Featured first on the home screen. Its leaderboard
+  is a recent-matches log (most recent first, name + final score as W/L/T) rather
+  than a top-score ranking, matching the name-prompt-on-finish flow every other
+  mode already has.
 
 ## Planned
 

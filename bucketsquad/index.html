@@ -64,9 +64,9 @@
   .row{display:flex;gap:10px;margin-top:10px}
   .link{flex:1;border:0;background:#F0E4D6;color:#5A4636;border-radius:12px;padding:10px;
     font-family:inherit;font-weight:900;font-size:13px}
-  .tabs{display:flex;gap:8px;margin:12px 0}
-  .tab{flex:1;border:0;border-radius:12px;padding:9px;font-family:inherit;font-weight:900;
-    font-size:13px;background:#E4D5C4;color:#6B5946}
+  .tabs{display:flex;gap:5px;margin:12px 0}
+  .tab{flex:1;border:0;border-radius:12px;padding:9px 2px;font-family:inherit;font-weight:900;
+    font-size:11.5px;background:#E4D5C4;color:#6B5946}
   .tab.on{background:var(--orange);color:#fff}
   .lb{list-style:none;margin:0 0 14px;padding:0;text-align:left}
   .lb li{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;font-size:14px}
@@ -344,7 +344,10 @@ function buildFloor(){
 /* ---------------- modes, storage, leaderboard ---------------- */
 const el=id=>document.getElementById(id);
 const MODES={game:{label:"Two on One",secs:60},three:{label:"3-Point Contest",secs:60},arizona:{label:"Arizona Drill",secs:60},shuttle:{label:"Shuttle Run",secs:90,asc:true},dodgeball:{label:"Dodgeball Hoops",secs:180}};
-const fmtScore=(m,s)=>MODES[m].asc?(s/10).toFixed(1)+"s":s;
+const fmtScore=(m,s)=>{
+  if(m==="dodgeball"){ const y=Math.floor(s/100), t=s%100; return `${y>t?"W":y<t?"L":"T"} ${y}-${t}`; }
+  return MODES[m].asc?(s/10).toFixed(1)+"s":s;
+};
 let mode="game", playerName="";
 
 /* Shared leaderboard lives in Firebase (Cloud Firestore) so every visitor sees the
@@ -360,21 +363,27 @@ const firebaseConfig={
 firebase.initializeApp(firebaseConfig);
 const db=firebase.firestore();
 
-let boards={game:[],three:[],arizona:[],shuttle:[]};
+let boards={game:[],three:[],arizona:[],shuttle:[],dodgeball:[]};
 async function loadBoards(){
   // each mode's board is fetched independently -- one collection failing
-  // (missing rules, offline, etc.) must never blank out the other boards
+  // (missing rules, offline, etc.) must never blank out the other boards.
+  // dodgeball is a recent-matches log, not a high-score board, so it's
+  // ordered by timestamp instead of score.
   const fetchOne=async(m)=>{
     try{
-      const snap=await db.collection("scores_"+m).orderBy("score",MODES[m].asc?"asc":"desc").limit(10).get();
+      const byTime=m==="dodgeball";
+      const snap=await db.collection("scores_"+m)
+        .orderBy(byTime?"ts":"score", byTime?"desc":(MODES[m].asc?"asc":"desc"))
+        .limit(10).get();
       return snap.docs.map(d=>({n:d.data().name,s:d.data().score}));
     }catch(e){ return null; }
   };
-  const [g,t,a,sh]=await Promise.all(["game","three","arizona","shuttle"].map(fetchOne));
+  const [g,t,a,sh,dg]=await Promise.all(["game","three","arizona","shuttle","dodgeball"].map(fetchOne));
   if(g) boards.game=g;
   if(t) boards.three=t;
   if(a) boards.arizona=a;
   if(sh) boards.shuttle=sh;
+  if(dg) boards.dodgeball=dg;
   try{ playerName=window.localStorage.getItem("bucketsquad:name")||""; }catch(e){}
 }
 async function saveScore(m,name,sc){
@@ -1230,8 +1239,8 @@ const icon=name=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" str
 const CROWN='<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" style="vertical-align:-1px"><path d="M4 8l4 3 4-6 4 6 4-3-1.5 9h-13z"/></svg>';
 
 function homeScreen(){
-  const bestG=boards.game[0], bestT=boards.three[0], bestA=boards.arizona[0], bestSh=boards.shuttle[0];
-  const topLine=(m,best,fallback)=>best?`${CROWN} Top: ${esc(best.n)} ${fmtScore(m,best.s)}`:fallback;
+  const bestG=boards.game[0], bestT=boards.three[0], bestA=boards.arizona[0], bestSh=boards.shuttle[0], lastDb=boards.dodgeball[0];
+  const topLine=(m,best,fallback)=>best?`${CROWN} ${m==="dodgeball"?"Last":"Top"}: ${esc(best.n)} ${fmtScore(m,best.s)}`:fallback;
   const modeCard=(cls,m,iconName,title,sub,best,fallback)=>`
     <button class="modeCard ${cls}" data-m="${m}">
       <span class="mc-icon">${icon(iconName)}</span>
@@ -1249,11 +1258,11 @@ function homeScreen(){
       <span class="nmChev">&#9662;</span>
     </div>
     <div class="tagline"><span></span>Practice gets results<span></span></div>
+    ${modeCard("dodgeball","dodgeball","dodge","Dodgeball Hoops","5v5 live match",lastDb,"Clear 5 spots before they do -- dodge or get benched.")}
     ${modeCard("game","game","stopwatch","2 on 1","60 seconds",bestG,"Pass, find the open man, score.")}
     ${modeCard("three","three","ball","3-Point Contest","60 seconds",bestT,"5 racks, money balls worth 2.")}
     ${modeCard("arizona","arizona","cone","Arizona Drill","60 seconds",bestA,"Full-court layups, makes and misses.")}
     ${modeCard("shuttle","shuttle","run","Shuttle Run","Race the clock",bestSh,"Full suicides, race 10 simulated teammates.")}
-    ${modeCard("dodgeball","dodgeball","dodge","Dodgeball Hoops","5v5 live match",null,"Clear 5 spots before they do -- dodge or get benched.")}
     <div class="row">
       <button class="util" id="lbBtn">${icon("chart")}<b>Leaderboard</b><span class="mc-chev">&rsaquo;</span></button>
       <button class="util" id="defBtn">${icon("shield")}<b>Defender</b><span class="toggleSw ${D.on?"on":""}"></span></button>
@@ -1268,9 +1277,10 @@ function boardScreen(m){
   const rows=boards[m];
   card(`<h1>Leaderboard</h1>
     <div class="tabs">
+      <button class="tab ${m==="dodgeball"?"on":""}" data-b="dodgeball">Dodge</button>
       <button class="tab ${m==="game"?"on":""}" data-b="game">2 on 1</button>
       <button class="tab ${m==="three"?"on":""}" data-b="three">3PT</button>
-      <button class="tab ${m==="arizona"?"on":""}" data-b="arizona">Arizona</button>
+      <button class="tab ${m==="arizona"?"on":""}" data-b="arizona">AZ</button>
       <button class="tab ${m==="shuttle"?"on":""}" data-b="shuttle">Shuttle</button>
     </div>
     <ol class="lb">${rows.length?rows.map((r,i)=>
@@ -1313,26 +1323,53 @@ function start(m){
   say(mode==="three"?"SHOOT!":mode==="arizona"?"RUN!":"GO!");
 }
 
-function dbGameOverCard(){
-  // no leaderboard for this mode -- it's a straight win/lose match, not a score
+async function dbGameOverFlow(){
+  sfx.horn();
   const aDone=dbSpotsA.filter(s=>s.done).length, bDone=dbSpotsB.filter(s=>s.done).length;
-  const aWin=dbSpotsA.every(s=>s.done), bWin=dbSpotsB.every(s=>s.done);
-  const winner=aWin?"A":bWin?"B":aDone>bDone?"A":bDone>aDone?"B":null;
+  // encoded as a single int for Firestore (your team's spots * 100 + theirs) so
+  // the recent-matches log reuses the exact same {name,score,ts} schema and
+  // saveScore()/loadBoards() plumbing as every other mode -- no new fields
+  const encoded=aDone*100+bDone;
+  if(playerName){
+    const {ok}=await saveScore("dodgeball",playerName,encoded);
+    dbGameOverCard(aDone,bDone,ok?null:"failed");
+  }else{
+    dbGameOverCard(aDone,bDone,"needsName");
+  }
+}
+function dbGameOverCard(aDone,bDone,state){
+  const needsName=state==="needsName", failed=state==="failed";
+  const winner=aDone===5?"A":bDone===5?"B":aDone>bDone?"A":bDone>aDone?"B":null;
   const title=winner==="A"?"You Win!":winner==="B"?"They Win":"Draw";
-  const msg=winner==="A"?"Your team cleared all 5 spots!":winner==="B"?"The other team finished first.":"Time expired &mdash; even spots.";
+  const resultMsg=winner==="A"?"Your team cleared all 5 spots!":winner==="B"?"The other team finished first.":"Time expired &mdash; even spots.";
+  const msg=needsName?"Enter your name to log this match."
+    :failed?"Couldn't save this match &mdash; check your connection."
+    :resultMsg;
   card(`<h1>${title}</h1>
     <div class="final">${aDone}-${bDone}</div>
     <div class="sub">${msg}</div>
-    <button class="play" id="again">Play again</button>
+    ${needsName?`<input id="nm" placeholder="Your name" maxlength="12">
+    <button class="play" id="saveScore">Save match</button>`:`<button class="play" id="again">Play again</button>`}
     <div class="row">
+      ${needsName?`<button class="link" id="skip">Skip</button>`:`<button class="link" id="lbBtn2">Leaderboard</button>`}
       <button class="link" id="menu">Change mode</button>
     </div>`);
-  el("again").onclick=()=>start("dodgeball");
+  if(needsName){
+    el("saveScore").onclick=async()=>{
+      nameFromInput();
+      const {ok}=await saveScore("dodgeball",playerName||"Player",aDone*100+bDone);
+      dbGameOverCard(aDone,bDone,ok?null:"failed");
+    };
+    el("skip").onclick=()=>start("dodgeball");
+  }else{
+    el("again").onclick=()=>start("dodgeball");
+    el("lbBtn2").onclick=()=>boardScreen("dodgeball");
+  }
   el("menu").onclick=homeScreen;
 }
 async function gameOver(){
+  if(mode==="dodgeball"){ await dbGameOverFlow(); return; }
   sfx.horn();
-  if(mode==="dodgeball"){ dbGameOverCard(); return; }
   const perfect=mode==="three"&&score===34;
   if(mode==="shuttle"&&shStep<SHUTTLE_STOPS.length){
     gameOverCard("dnf",perfect);

@@ -87,8 +87,12 @@ Everything lives in one file: inline `<style>`, DOM for the HUD/joystick/overlay
     it as seconds instead of a raw number everywhere a score is shown. `timeLeft` here is
     just a safety cap (see `frame()`), not a real countdown; the mode ends the instant
     `shStep` completes, or via `gameOver()`'s explicit DNF path if the cap is hit first.
-  - Dodgeball-mode: 5v5, opposite baskets, no leaderboard (it's a win/lose match, not a
-    score). `dbTeamA`/`dbTeamB` are full five-player rosters; exactly one member per team
+  - Dodgeball-mode: 5v5, opposite baskets. The featured/first mode on the home screen.
+    Its leaderboard is a recent-matches log, not a high-score board -- `fmtScore()`
+    decodes the saved int as `Math.floor(s/100)` vs `s%100` (your team's spots vs
+    theirs, W/L/T derived from the two) and `loadBoards()` queries `scores_dodgeball`
+    ordered by `ts desc` instead of `score`, so it shows the most recent matches, not
+    the best. `dbTeamA`/`dbTeamB` are full five-player rosters; exactly one member per team
     is the active shooter (`dbActiveA`/`dbActiveB`) — everyone else on that team is a
     dodgeball thrower. `me()` is mode-aware and returns `dbTeamA[dbActiveA]` here instead
     of `team[handler]`, so the existing joystick/SHOOT/charge machinery drives whichever
@@ -136,11 +140,14 @@ meant to be rewarded; a lazy pass through the defender can be picked off.
 `bucketsquadgame`), not in browser storage — `rmvbasketball.com` is plain static GitHub
 Pages with no backend of its own, so anything meant to be shared across visitors has to
 live somewhere off-site. `loadBoards()`/`saveScore()` read/write one flat collection per
-mode (`scores_game`, `scores_three`, `scores_arizona`, `scores_shuttle` — one doc per
-submitted score: `name`, `score`, `ts`), each queried with a single `orderBy("score", ...)
-.limit(10)` — deliberately per-mode collections instead of one with a `mode` field, so no
-composite index is needed. Sort direction comes from `MODES[m].asc` (shuttle's is
-ascending — lower time wins; everything else is descending). Adding a mode means adding
+mode (`scores_game`, `scores_three`, `scores_arizona`, `scores_shuttle`, `scores_dodgeball`
+— one doc per submitted score: `name`, `score`, `ts`), each queried with a single
+`orderBy(...).limit(10)` — deliberately per-mode collections instead of one with a `mode`
+field, so no composite index is needed. Sort direction/field comes from `MODES[m].asc`
+(shuttle's is ascending — lower time wins) and, for dodgeball specifically, a `byTime`
+branch hardcoded in `loadBoards()` that sorts by `ts desc` instead of `score` — it's a
+recent-matches log, not a ranking, so the "score" field is really `yourSpots*100 +
+theirSpots` decoded back out by `fmtScore()`. Adding a mode means adding
 its Firestore security-rules block by hand on the console (see the git history for the
 exact text last given to the user) — nothing in the client enforces that they match up,
 so a missing rules block silently permission-denies that one mode's reads/writes without
