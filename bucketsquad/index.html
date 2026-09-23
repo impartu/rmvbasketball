@@ -631,15 +631,23 @@ function dbStepEnemyShooter(dt){
 function drawDodgeballExtras(){
   dbSpotsA.concat(dbSpotsB).forEach(s=>{
     ctx.beginPath(); ctx.arc(fx(s.x),fy(s.y),S*2.2,0,7);
-    ctx.fillStyle=s.done?"rgba(143,224,138,.35)":"rgba(110,186,231,.35)";
+    ctx.fillStyle=s.done?"rgba(60,200,90,.55)":"rgba(224,50,50,.55)";
     ctx.fill();
-    ctx.lineWidth=S*.3; ctx.strokeStyle=s.done?"#8FE08A":"#6EBAE7";
+    ctx.lineWidth=S*.35; ctx.strokeStyle=s.done?"#3FBF63":"#E63232";
     ctx.stroke();
   });
   [dbTeamA,dbTeamB].forEach((roster,ri)=>{
     const activeIdx=ri===0?dbActiveA:dbActiveB, heldByThisTeam=ri===0?dbBallHeldA:dbBallHeldB;
     roster.forEach((m,i)=>{
       if(!m.alive){ ctx.save(); ctx.globalAlpha=.35; drawKid(m,false,false); ctx.restore(); return; }
+      const isBallCarrier=i===activeIdx&&heldByThisTeam&&!ball;
+      if(isBallCarrier){
+        // drawn first, low and centered, so the body (drawn next) partially
+        // covers it -- reads as a real dribble regardless of which way they're
+        // facing, instead of a ball floating off to a fixed side
+        const dr=Math.abs(Math.sin(m.bob*3));
+        drawBall(fx(m.x),fy(m.y)+S*(0.85+dr*.3),S*.5,false);
+      }
       drawKid(m,i===activeIdx&&heldByThisTeam,false);
     });
   });
@@ -1163,7 +1171,7 @@ function draw(){
     ctx.fillStyle="rgba(40,26,14,.22)";
     ctx.beginPath(); ctx.ellipse(fx(bx),fy(by),S*.5,S*.28,0,0,7); ctx.fill();
     drawBall(fx(bx),fy(by)-hgt*S*.55,S*(.62+hgt*.02),ball.mode==="shot"&&ball.money);
-  }else if(!ball&&(mode==="game"||holding||mode==="arizona"||(mode==="dodgeball"&&dbBallHeldA))){
+  }else if(!ball&&(mode==="game"||holding||mode==="arizona")){
     const p=me(), dr=Math.abs(Math.sin(p.bob*3));
     drawBall(fx(p.x)+S*1.5,fy(p.y)+S*(.6+dr*.5),S*.55,mode==="three"&&moneyHeld);
   }else if(ball&&mode==="game"){
