@@ -5,6 +5,16 @@ A running list of feature ideas for the game, sorted by status. Add new ideas to
 or to **Veto'd** (with a reason) if ruled out. This file doesn't affect the game
 itself — it's just a shared backlog.
 
+## Shipped
+
+- **Dodgeball Hoops** — 5v5, two teams each racing to complete 5 shooting spots
+  around their own basket while the other team's throwers try to eliminate
+  their active shooter with dodgeballs. One active shooter per team at a time
+  (control passes to a teammate on a hit, with a respawn cooldown); Team B is
+  fully automated. Tunables (`DB_RESPAWN_T`, `DB_THROW_ACC`, `DB_THROW_MIN/MAX`,
+  `DB_ENEMY_SKILL`, `DB_SETUP_T`) are exposed at the top of the mode's code for
+  further difficulty tuning. No leaderboard (win/lose match, not a score).
+
 ## Planned
 
 - **Zoomed player-follow camera** — a toggle that switches from the current

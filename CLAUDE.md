@@ -87,7 +87,29 @@ Everything lives in one file: inline `<style>`, DOM for the HUD/joystick/overlay
     it as seconds instead of a raw number everywhere a score is shown. `timeLeft` here is
     just a safety cap (see `frame()`), not a real countdown; the mode ends the instant
     `shStep` completes, or via `gameOver()`'s explicit DNF path if the cap is hit first.
-  - `target()` is mode-aware (`hoops[0]` for game/three, whichever basket the current
+  - Dodgeball-mode: 5v5, opposite baskets, no leaderboard (it's a win/lose match, not a
+    score). `dbTeamA`/`dbTeamB` are full five-player rosters; exactly one member per team
+    is the active shooter (`dbActiveA`/`dbActiveB`) — everyone else on that team is a
+    dodgeball thrower. `me()` is mode-aware and returns `dbTeamA[dbActiveA]` here instead
+    of `team[handler]`, so the existing joystick/SHOOT/charge machinery drives whichever
+    teammate is currently up without any input-layer changes. `dbSpotsA`/`dbSpotsB` are
+    each team's five shot-spot circles (`DB_SPOT_R` to attempt one); the shared team ball
+    (`dbBallHeldA`/`dbBallHeldB`) drops loose (`dbLooseA`/`dbLooseB`) wherever a shooter is
+    hit — `dbEliminate()` benches them (`DB_RESPAWN_T`), hands off to the next living
+    teammate, and the new shooter must physically walk to the loose ball (checked in
+    `step()`'s dodgeball branch) before `canShoot()` allows firing again; if a whole team
+    is down when someone respawns, `dbStepBench()` promotes them straight to active
+    shooter with the ball auto-granted, rather than leaving a loose ball nobody can reach.
+    Dodgeballs (`dodgeballs[]`) are real flung-at-a-point projectiles, not a hit-chance
+    roll — `dbStepThrowers()` throws from fixed slot positions with jitter scaled by
+    `DB_THROW_ACC`, and `dbStepDodgeballs()` checks each one's live distance to its target
+    every frame, so moving out of the way genuinely works. Team B is fully automated end
+    to end (`dbStepEnemyShooter()`): it retrieves its own loose ball, walks to its nearest
+    open spot, and — critically — must stand still for `DB_SETUP_T` before firing, the
+    same exposed window the human gets for free by having to hold the charge button.
+    Skipping that dwell was the first balance bug found in testing: without it, Team B
+    cleared all 5 spots in about ten seconds, before the player could do anything.
+  - `target()` is mode-aware (`hoops[0]` for game/three/dodgeball, whichever basket the current
     Arizona leg is running at); shots in three-mode must additionally clear `isThree()`
     (no close-range attempts).
 - **Audio.** A small synth built directly on Web Audio, no audio files — `tone()` and
