@@ -51,6 +51,28 @@
     text-transform: uppercase;
     color: var(--red);
   }
+  .stats {
+    max-width: 380px;
+    margin: 16px auto 0;
+    padding: 14px 16px;
+    background: var(--ink);
+    color: #fff;
+    border-radius: 12px;
+    border-bottom: 4px solid var(--red);
+  }
+  .stats[hidden] { display: none; }
+  .stats-top {
+    margin: 0;
+    font: 22px/1.2 "Russo One", sans-serif;
+    letter-spacing: .02em;
+  }
+  .stats-top span { color: #ff4a4f; }
+  .stats p.sub {
+    margin: 6px 0 0;
+    font-size: 14px;
+    color: #c9c9ce;
+  }
+  .stats p.sub b { color: #fff; font-weight: 800; }
   main {
     max-width: 560px;
     margin: 0 auto;
@@ -121,6 +143,11 @@
 <header>
   <img src="logo.png" alt="5onfive Genesis" width="900" height="608">
   <p class="tag">Parent Hub</p>
+  <section class="stats" id="stats" hidden aria-label="Team record">
+    <p class="stats-top" id="stats-top"></p>
+    <p class="sub" id="stats-last"></p>
+    <p class="sub" id="stats-next"></p>
+  </section>
 </header>
 
 <main>
@@ -178,5 +205,64 @@
 
   <footer>Tip: tap Share &rarr; <b>Add to Home Screen</b> to keep this hub one tap away.</footer>
 </main>
+<script>
+// Stats strip: row 1 of the published sheet is headers, row 2 is values.
+// Any failure (network, CORS, bad data) leaves the strip hidden.
+(function () {
+  var CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRu1mfYznYUAy9sA20Zt8zdQ_U7P5Pwsdx9Coiqmq8VKDl9HMzajCp8z4xYgDdsR7TzJ9TImkvv5-pW/pub?gid=862729038&single=true&output=csv";
+
+  // RFC 4180-style parser: quoted fields may hold commas, newlines and "" escapes.
+  function parseCSV(text) {
+    var rows = [], row = [], field = "", q = false, i = 0, c;
+    text = text.replace(/^﻿/, "");
+    while (i < text.length) {
+      c = text[i++];
+      if (q) {
+        if (c === '"') {
+          if (text[i] === '"') { field += '"'; i++; } else q = false;
+        } else field += c;
+      } else if (c === '"') q = true;
+      else if (c === ",") { row.push(field); field = ""; }
+      else if (c === "\n" || c === "\r") {
+        if (c === "\r" && text[i] === "\n") i++;
+        row.push(field); rows.push(row); row = []; field = "";
+      } else field += c;
+    }
+    if (field || row.length) { row.push(field); rows.push(row); }
+    return rows;
+  }
+
+  function line(el, label, parts) {
+    parts = parts.filter(Boolean);
+    if (!parts.length) { el.hidden = true; return; }
+    var b = document.createElement("b");
+    b.textContent = label + ": ";
+    el.appendChild(b);
+    el.appendChild(document.createTextNode(parts.join(label === "Last" ? " — " : ", ")));
+  }
+
+  var opts = { cache: "no-store" };
+  if (window.AbortSignal && AbortSignal.timeout) opts.signal = AbortSignal.timeout(8000);
+  fetch(CSV + "&t=" + Date.now(), opts)
+    .then(function (r) { if (!r.ok) throw r.status; return r.text(); })
+    .then(function (text) {
+      var rows = parseCSV(text);
+      if (rows.length < 2) return;
+      var d = {};
+      rows[0].forEach(function (h, k) { d[h.trim()] = (rows[1][k] || "").trim(); });
+      if (!d.Trophies && !d.Record) return;
+
+      var top = document.getElementById("stats-top");
+      top.appendChild(document.createTextNode("🏆 " + (d.Trophies || "0") + " · Record "));
+      var rec = document.createElement("span");
+      rec.textContent = d.Record || "–";
+      top.appendChild(rec);
+      line(document.getElementById("stats-last"), "Last", [d["Last Game"], d["Last Result"]]);
+      line(document.getElementById("stats-next"), "Next", [d["Next Tournament"], d["Next Dates"]]);
+      document.getElementById("stats").hidden = false;
+    })
+    .catch(function () {});
+})();
+</script>
 </body>
 </html>
