@@ -232,13 +232,18 @@
     return rows;
   }
 
-  function line(el, label, parts) {
+  function line(el, label, parts, sep) {
     parts = parts.filter(Boolean);
     if (!parts.length) { el.hidden = true; return; }
     var b = document.createElement("b");
     b.textContent = label + ": ";
     el.appendChild(b);
-    el.appendChild(document.createTextNode(parts.join(label === "Last" ? " — " : ", ")));
+    el.appendChild(document.createTextNode(parts.join(sep)));
+  }
+
+  // Keep the strip to one line: first three words, minus a dangling "&" or "-".
+  function shortName(s) {
+    return s.split(/\s+/).slice(0, 3).join(" ").replace(/\s+[&\-–—]$/, "");
   }
 
   var opts = { cache: "no-store" };
@@ -257,8 +262,12 @@
       var rec = document.createElement("span");
       rec.textContent = d.Record || "–";
       top.appendChild(rec);
-      line(document.getElementById("stats-last"), "Last", [d["Last Game"], d["Last Result"]]);
-      line(document.getElementById("stats-next"), "Next", [d["Next Tournament"], d["Next Dates"]]);
+      // Prefer the per-tournament summary; fall back to the single last game
+      // until the sheet has the Last Tournament / Last Weekend columns.
+      var last = document.getElementById("stats-last");
+      if (d["Last Tournament"]) line(last, "Last", [shortName(d["Last Tournament"]), d["Last Weekend"]], " ");
+      else line(last, "Last", [d["Last Game"], d["Last Result"]], " — ");
+      line(document.getElementById("stats-next"), "Next", [d["Next Tournament"], d["Next Dates"]], ", ");
       document.getElementById("stats").hidden = false;
     })
     .catch(function () {});
