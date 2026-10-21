@@ -1,4 +1,13 @@
 <meta charset="utf-8">
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-855PPNGNJT"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-855PPNGNJT');
+</script>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>BucketSquad Hoops</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -350,6 +359,12 @@ const fmtScore=(m,s)=>{
 };
 let mode="game", playerName="";
 
+/* Lightweight GA4 gameplay events (game_start/game_complete/game_replay) --
+   never throws, never touched if gtag didn't load. */
+function trackEvent(name,params){
+  try{ if(window.gtag) gtag("event",name,params||{}); }catch(e){}
+}
+
 /* Shared leaderboard lives in Firebase (Cloud Firestore) so every visitor sees the
    same top 10; player name is a local-only convenience, not synced. */
 const firebaseConfig={
@@ -404,7 +419,7 @@ const team=[
 let handler=0;
 const D={x:CW/2,y:19,on:true,slow:0};
 let ball=null, power=0, charging=false, dirCharge=1, stealCool=0;
-let score=0, run=0, timeLeft=60, playing=false, last=0, shake=0, ripples=[];
+let score=0, run=0, timeLeft=60, playing=false, last=0, shake=0, ripples=[], roundStartTs=0;
 
 /* 3-point contest: five racks, last ball of each is a money ball,
    and the top-of-the-key rack is all money. */
@@ -1319,7 +1334,8 @@ function start(m){
   if(band) band.setAttribute("stroke-dasharray","0 289");
   hud();
   el("overlay").classList.add("hide");
-  playing=true; last=performance.now(); audio(); sfx.tip();
+  playing=true; last=performance.now(); roundStartTs=last; audio(); sfx.tip();
+  trackEvent("game_start",{game_name:"bucketsquad_hoops",game_mode:mode});
   say(mode==="three"?"SHOOT!":mode==="arizona"?"RUN!":"GO!");
 }
 
@@ -1330,6 +1346,7 @@ async function dbGameOverFlow(){
   // the recent-matches log reuses the exact same {name,score,ts} schema and
   // saveScore()/loadBoards() plumbing as every other mode -- no new fields
   const encoded=aDone*100+bDone;
+  trackEvent("game_complete",{game_name:"bucketsquad_hoops",game_mode:"dodgeball",final_score:encoded,duration_sec:roundStartTs?+((performance.now()-roundStartTs)/1000).toFixed(1):undefined});
   if(playerName){
     const {ok}=await saveScore("dodgeball",playerName,encoded);
     dbGameOverCard(aDone,bDone,ok?null:"failed");
@@ -1360,9 +1377,9 @@ function dbGameOverCard(aDone,bDone,state){
       const {ok}=await saveScore("dodgeball",playerName||"Player",aDone*100+bDone);
       dbGameOverCard(aDone,bDone,ok?null:"failed");
     };
-    el("skip").onclick=()=>start("dodgeball");
+    el("skip").onclick=()=>{ trackEvent("game_replay",{game_name:"bucketsquad_hoops",game_mode:"dodgeball"}); start("dodgeball"); };
   }else{
-    el("again").onclick=()=>start("dodgeball");
+    el("again").onclick=()=>{ trackEvent("game_replay",{game_name:"bucketsquad_hoops",game_mode:"dodgeball"}); start("dodgeball"); };
     el("lbBtn2").onclick=()=>boardScreen("dodgeball");
   }
   el("menu").onclick=homeScreen;
@@ -1371,7 +1388,11 @@ async function gameOver(){
   if(mode==="dodgeball"){ await dbGameOverFlow(); return; }
   sfx.horn();
   const perfect=mode==="three"&&score===34;
-  if(mode==="shuttle"&&shStep<SHUTTLE_STOPS.length){
+  const dnf=mode==="shuttle"&&shStep<SHUTTLE_STOPS.length;
+  const durationSec=roundStartTs?+((performance.now()-roundStartTs)/1000).toFixed(1):undefined;
+  const finalScore=mode==="shuttle"?+(score/10).toFixed(1):score;
+  trackEvent("game_complete",{game_name:"bucketsquad_hoops",game_mode:mode,duration_sec:durationSec,...(dnf?{}:{final_score:finalScore})});
+  if(dnf){
     gameOverCard("dnf",perfect);
     return;
   }
@@ -1405,9 +1426,9 @@ function gameOverCard(rank,perfect){
       const {ok,rank}=await saveScore(mode,playerName||"Player",score);
       gameOverCard(ok?rank:"failed",perfect);
     };
-    el("skip").onclick=()=>start(mode);
+    el("skip").onclick=()=>{ trackEvent("game_replay",{game_name:"bucketsquad_hoops",game_mode:mode}); start(mode); };
   }else{
-    el("again").onclick=()=>start(mode);
+    el("again").onclick=()=>{ trackEvent("game_replay",{game_name:"bucketsquad_hoops",game_mode:mode}); start(mode); };
     el("lbBtn2").onclick=()=>boardScreen(mode);
   }
   el("menu").onclick=homeScreen;
